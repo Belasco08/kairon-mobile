@@ -1,0 +1,160 @@
+import { StyleSheet } from 'react-native';
+import { colors } from '../colors';
+import { fonts, fontSizes, lineHeights } from '../fonts';
+
+export const authStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.surface,
+  },
+  background: {
+    flex: 1,
+    backgroundColor: colors.primary,
+  },
+  content: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 32,
+    borderTopRightRadius: 32,
+    marginTop: 40,
+    paddingHorizontal: 24,
+    paddingTop: 40,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  logoContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  logo: {
+    width: 60,
+    height: 60,
+    resizeMode: 'contain',
+  },
+  title: {
+    fontFamily: fonts.bold,
+    fontSize: fontSizes['3xl'],
+    color: colors.textPrimary,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontFamily: fonts.regular,
+    fontSize: fontSizes.base,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: lineHeights.normal,
+  },
+  form: {
+    gap: 20,
+    marginBottom: 32,
+  },
+  forgotPassword: {
+    alignSelf: 'flex-end',
+    marginTop: -8,
+    marginBottom: 20,
+  },
+  forgotPasswordText: {
+    fontFamily: fonts.medium,
+    fontSize: fontSizes.sm,
+    color: colors.primary,
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 24,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    fontFamily: fonts.regular,
+    fontSize: fontSizes.sm,
+    color: colors.textSecondary,
+    paddingHorizontal: 16,
+  },
+  socialButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginBottom: 32,
+  },
+  socialButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 24,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  footerText: {
+    fontFamily: fonts.regular,
+    fontSize: fontSizes.base,
+    color: colors.textSecondary,
+  },
+  footerLink: {
+    fontFamily: fonts.semiBold,
+    color: colors.primary,
+  },
+  termsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 32,
+  },
+  termsCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  termsText: {
+    flex: 1,
+    fontFamily: fonts.regular,
+    fontSize: fontSizes.sm,
+    color: colors.textSecondary,
+    lineHeight: lineHeights.normal,
+  },
+  termsLink: {
+    fontFamily: fonts.semiBold,
+    color: colors.primary,
+  },
+  errorMessage: {
+    fontFamily: fonts.regular,
+    fontSize: fontSizes.sm,
+    color: colors.error,
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 24,
+  },
+  successMessage: {
+    fontFamily: fonts.regular,
+    fontSize: fontSizes.sm,
+    color: colors.success,
+    textAlign: 'center',
+    marginTop: 8,
+    paddingHorizontal: 24,
+  },
+});
