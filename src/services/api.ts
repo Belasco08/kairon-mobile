@@ -5,7 +5,7 @@ const API_URL = "https://kairon-api.onrender.com";
 
 export const api = axios.create({
   baseURL: API_URL,
-  timeout: 10000,
+  timeout: 60000, // 🔥 Aumentado para 60 segundos para dar tempo do Render acordar
   headers: {
     "Content-Type": "application/json",
   },
@@ -15,49 +15,6 @@ export const api = axios.create({
    ROTAS PÚBLICAS
 ========================= */
 const AUTH_ROUTES = ["/auth/login", "/auth/register", "/auth/refresh"];
-
-
-/* =========================
-   REQUEST INTERCEPTOR (DEBUG MODE)
-========================= */
-api.interceptors.request.use(
-  async (config: InternalAxiosRequestConfig) => {
-    // Log para entendermos a URL que está sendo chamada
-    console.log(`[API Request] 🚀 ${config.method?.toUpperCase()} ${config.url}`);
-
-    // Verifica se é rota pública
-    if (AUTH_ROUTES.some((route) => config.url?.includes(route))) {
-      console.log(`[API Auth] 🔓 Rota pública detectada. Pulando injeção de token.`);
-      return config;
-    }
-
-    const token = await AsyncStorage.getItem("@Kairon:token");
-
-    if (token) {
-      // Log para ver se o token está íntegro (NÃO mostre isso em produção)
-      console.log(`[API Auth] 🔑 Token encontrado (Início): ${token.substring(0, 15)}...`);
-      
-      // Decodificando payload básico para ver as roles (opcional, ajuda muito)
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        console.log(`[API Auth] 👮 Roles no Token:`, payload.roles || payload.authorities || "Nenhuma role encontrada");
-        console.log(`[API Auth] ⏳ Expira em:`, new Date(payload.exp * 1000).toLocaleString());
-      } catch (e) {
-        console.log(`[API Auth] ⚠️ Erro ao decodificar token para debug.`);
-      }
-
-      config.headers.Authorization = `Bearer ${token}`;
-    } else {
-      console.log(`[API Auth] ❌ Nenhum token encontrado no Storage!`);
-    }
-
-    return config;
-  },
-  (error) => {
-    console.error("[API Error] 💥 Erro no Request Interceptor:", error);
-    return Promise.reject(error);
-  }
-);
 
 /* =========================
    REQUEST INTERCEPTOR
