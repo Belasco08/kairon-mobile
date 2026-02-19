@@ -4,15 +4,29 @@ import {
   Text,
   ScrollView,
   Alert,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  SafeAreaView,
+  StatusBar,
+  ActivityIndicator
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { authService } from '../../services/auth';
 import { Input } from '../../components/ui/Input';
-import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
-import { colors } from '../../styles/colors';
-import { commonStyles } from '../../styles/common';
-import { authStyles } from '../../styles/screens/auth';
+
+// Tema Kairon Premium
+const THEME = {
+  primary: '#0F172A',
+  surface: '#1E293B',
+  gold: '#D4AF37',
+  goldLight: 'rgba(212, 175, 55, 0.1)',
+  textLight: '#FFFFFF',
+  textMuted: 'rgba(255, 255, 255, 0.7)',
+  border: 'rgba(212, 175, 55, 0.3)',
+};
 
 export function ForgotPassword() {
   const navigation = useNavigation();
@@ -57,25 +71,44 @@ export function ForgotPassword() {
   };
 
   return (
-    <ScrollView 
-      style={authStyles.container}
-      contentContainerStyle={{ flexGrow: 1 }}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={authStyles.background}>
-        <View style={authStyles.content}>
-          <View style={authStyles.header}>
-            <View style={authStyles.logoContainer}>
-              <Text style={[commonStyles.h1, { color: colors.primary }]}>K</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.primary }}>
+      <StatusBar barStyle="light-content" backgroundColor={THEME.primary} />
+      
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Botão de Voltar */}
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <MaterialIcons
+              name="arrow-back"
+              size={28}
+              color={THEME.gold}
+            />
+          </TouchableOpacity>
+
+          {/* HEADER / LOGO AREA */}
+          <View style={styles.header}>
+            <View style={styles.iconContainer}>
+              <MaterialIcons name="email" size={40} color={THEME.gold} />
             </View>
-            <Text style={authStyles.title}>Recuperar Senha</Text>
-            <Text style={authStyles.subtitle}>
+            <Text style={styles.title}>Recuperar Senha</Text>
+            <Text style={styles.subtitle}>
               Digite seu e-mail para receber instruções de redefinição de senha
             </Text>
           </View>
 
-          <View style={authStyles.form}>
-            <Card>
+          {/* FORMULÁRIO */}
+          <View style={styles.formContainer}>
+            <View style={styles.inputGroup}>
               <Input
                 label="E-mail"
                 value={email}
@@ -87,31 +120,131 @@ export function ForgotPassword() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 error={error}
-                autoFocus
+                editable={!loading}
               />
-            </Card>
+            </View>
 
-            {error && (
-              <Text style={authStyles.errorMessage}>{error}</Text>
-            )}
+            {error ? (
+              <Text style={styles.errorMessage}>{error}</Text>
+            ) : null}
 
-            <Button
-              title={loading ? "Enviando..." : "Enviar Instruções"}
+            {/* Botão Dourado Principal */}
+            <TouchableOpacity
+              style={[styles.primaryButton, loading && { opacity: 0.7 }]}
               onPress={handleSubmit}
-              loading={loading}
               disabled={loading}
-              style={{ marginTop: 24 }}
-            />
+            >
+              {loading ? (
+                <ActivityIndicator color={THEME.primary} size="small" />
+              ) : (
+                <Text style={styles.primaryButtonText}>
+                  Enviar Instruções
+                </Text>
+              )}
+            </TouchableOpacity>
 
-            <Button
-              title="Voltar para Login"
+            {/* Botão Secundário (Outline) */}
+            <TouchableOpacity
+              style={styles.secondaryButton}
               onPress={() => navigation.goBack()}
-              variant="outline"
-              style={{ marginTop: 12 }}
-            />
+              disabled={loading}
+            >
+              <Text style={styles.secondaryButtonText}>
+                Voltar para Login
+              </Text>
+            </TouchableOpacity>
           </View>
-        </View>
-      </View>
-    </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  scrollContent: {
+    flexGrow: 1,
+    padding: 24,
+    justifyContent: 'center'
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    padding: 8,
+    marginLeft: -8,
+    marginBottom: 16,
+    marginTop: Platform.OS === 'android' ? 20 : 0,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  iconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: THEME.goldLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: THEME.gold,
+    marginBottom: 8,
+    textAlign: 'center'
+  },
+  subtitle: {
+    fontSize: 16,
+    color: THEME.textMuted,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  formContainer: {
+    marginBottom: 24,
+  },
+  inputGroup: {
+    marginBottom: 16
+  },
+  errorMessage: {
+    color: '#EF4444', // Vermelho para mensagens de erro
+    fontSize: 14,
+    marginBottom: 16,
+    textAlign: 'center'
+  },
+  primaryButton: {
+    backgroundColor: THEME.gold,
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    shadowColor: THEME.gold,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+    marginTop: 8,
+  },
+  primaryButtonText: {
+    color: THEME.primary,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  secondaryButton: {
+    backgroundColor: 'transparent',
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: THEME.gold,
+    marginTop: 16,
+  },
+  secondaryButtonText: {
+    color: THEME.gold,
+    fontSize: 16,
+    fontWeight: 'bold',
+  }
+});

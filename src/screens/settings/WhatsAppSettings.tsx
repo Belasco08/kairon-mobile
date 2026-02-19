@@ -85,7 +85,7 @@ export function WhatsAppSettings() {
   // Em produção, você troca o localhost pelo seu domínio real (ex: app.kairon.com.br)
   const BASE_WEB_URL = "kairon-web-one.vercel.app/agendar/";
   const companySlug = company?.slug || targetCompanyId || "minha-barbearia";
-  const myBookingLink = `${BASE_WEB_URL}${companySlug}`;
+  const myBookingLink = `${BASE_WEB_URL}${targetCompanyId || "id-da-empresa"}`;
 
   useEffect(() => {
     loadFreshData();

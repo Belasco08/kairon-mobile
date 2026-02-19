@@ -5,13 +5,14 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
+  StatusBar,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 import { useAuth } from '../../contexts/AuthContext';
 import { Input } from '../../components/ui/Input';
-import { Button } from '../../components/ui/Button';
 import { colors } from '../../styles/colors';
 import { commonStyles } from '../../styles/common';
 
@@ -30,6 +31,17 @@ export function SignUp() {
     businessType: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Cores do tema Premium Kairon
+  const THEME = {
+    primary: '#0F172A', // Azul Marinho do fundo
+    surface: '#1E293B', // Azul mais claro para fundos de destaque
+    gold: '#D4AF37',    // Dourado
+    goldLight: 'rgba(212, 175, 55, 0.1)', // Dourado transparente
+    textLight: '#FFFFFF',
+    textMuted: 'rgba(255, 255, 255, 0.7)',
+    border: 'rgba(212, 175, 55, 0.3)',
+  };
 
   const businessTypes = [
     'Barbearia',
@@ -95,22 +107,26 @@ export function SignUp() {
 
   return (
     <ScrollView
-      style={commonStyles.container}
+      style={[commonStyles.container, { backgroundColor: THEME.primary }]}
       contentContainerStyle={{ paddingBottom: 40 }}
       showsVerticalScrollIndicator={false}
     >
+      <StatusBar backgroundColor={THEME.primary} barStyle="light-content" />
+      
       <View style={[commonStyles.screenContainer, commonStyles.p4]}>
+        {/* Botão de Voltar */}
         <TouchableOpacity
-          style={[commonStyles.mb4, { alignSelf: 'flex-start' }]}
+          style={[commonStyles.mb4, { alignSelf: 'flex-start', padding: 8, marginLeft: -8 }]}
           onPress={() => navigation.goBack()}
         >
           <MaterialIcons
             name="arrow-back"
-            size={24}
-            color={colors.textPrimary}
+            size={28}
+            color={THEME.gold}
           />
         </TouchableOpacity>
 
+        {/* Cabeçalho */}
         <View style={commonStyles.mb6}>
           <View style={{ alignItems: 'center', marginBottom: 16 }}>
             <View
@@ -118,24 +134,27 @@ export function SignUp() {
                 width: 80,
                 height: 80,
                 borderRadius: 40,
-                backgroundColor: colors.primaryLight,
+                backgroundColor: THEME.goldLight,
                 justifyContent: 'center',
                 alignItems: 'center',
                 marginBottom: 16,
+                borderWidth: 1,
+                borderColor: THEME.border,
               }}
             >
               <MaterialIcons
                 name="person-add"
                 size={40}
-                color={colors.primary}
+                color={THEME.gold}
               />
             </View>
 
-            <Text style={commonStyles.h2}>Criar Conta</Text>
+            <Text style={[commonStyles.h2, { color: THEME.gold }]}>Criar Conta</Text>
             <Text
               style={[
                 commonStyles.bodySecondary,
                 commonStyles.mt2,
+                { color: THEME.textMuted }
               ]}
             >
               Comece a gerenciar seus agendamentos
@@ -143,8 +162,11 @@ export function SignUp() {
           </View>
         </View>
 
+        {/* Informações Pessoais */}
         <View style={commonStyles.mb6}>
-          <Text style={[commonStyles.h3, commonStyles.mb4]}>Informações Pessoais</Text>
+          <Text style={[commonStyles.h3, commonStyles.mb4, { color: THEME.gold }]}>
+            Informações Pessoais
+          </Text>
           
           <Input
             label="Nome Completo *"
@@ -182,8 +204,11 @@ export function SignUp() {
           />
         </View>
 
+        {/* Segurança */}
         <View style={commonStyles.mb6}>
-          <Text style={[commonStyles.h3, commonStyles.mb4]}>Segurança</Text>
+          <Text style={[commonStyles.h3, commonStyles.mb4, { color: THEME.gold }]}>
+            Segurança
+          </Text>
           
           <Input
             label="Senha *"
@@ -212,8 +237,11 @@ export function SignUp() {
           />
         </View>
 
+        {/* Informações da Empresa */}
         <View style={commonStyles.mb6}>
-          <Text style={[commonStyles.h3, commonStyles.mb4]}>Informações da Empresa</Text>
+          <Text style={[commonStyles.h3, commonStyles.mb4, { color: THEME.gold }]}>
+            Informações da Empresa
+          </Text>
           
           <Input
             label="Nome da Empresa *"
@@ -228,57 +256,87 @@ export function SignUp() {
           />
 
           <View style={commonStyles.mb4}>
-            <Text style={commonStyles.inputLabel}>Tipo de Negócio *</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
-              {businessTypes.map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  style={[
-                    {
-                      paddingHorizontal: 12,
-                      paddingVertical: 8,
-                      borderRadius: 20,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                    },
-                    form.businessType === type && {
-                      backgroundColor: colors.primaryLight,
-                      borderColor: colors.primary,
-                    },
-                  ]}
-                  onPress={() => {
-                    setForm({ ...form, businessType: type });
-                    if (errors.businessType) setErrors({ ...errors, businessType: '' });
-                  }}
-                  disabled={loading}
-                >
-                  <Text
+            <Text style={[commonStyles.inputLabel, { color: THEME.textLight }]}>
+              Tipo de Negócio *
+            </Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+              {businessTypes.map((type) => {
+                const isSelected = form.businessType === type;
+                
+                return (
+                  <TouchableOpacity
+                    key={type}
                     style={[
-                      commonStyles.caption,
-                      form.businessType === type && { color: colors.primary, fontWeight: '600' },
+                      {
+                        paddingHorizontal: 16,
+                        paddingVertical: 10,
+                        borderRadius: 20,
+                        borderWidth: 1,
+                        borderColor: THEME.border,
+                        backgroundColor: 'transparent',
+                      },
+                      isSelected && {
+                        backgroundColor: THEME.gold,
+                        borderColor: THEME.gold,
+                      },
                     ]}
+                    onPress={() => {
+                      setForm({ ...form, businessType: type });
+                      if (errors.businessType) setErrors({ ...errors, businessType: '' });
+                    }}
+                    disabled={loading}
                   >
-                    {type}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Text
+                      style={[
+                        commonStyles.caption,
+                        { color: isSelected ? THEME.primary : THEME.textMuted },
+                        isSelected && { fontWeight: 'bold' },
+                      ]}
+                    >
+                      {type}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
             {errors.businessType && (
-              <Text style={commonStyles.errorText}>{errors.businessType}</Text>
+              <Text style={[commonStyles.errorText, { marginTop: 8 }]}>{errors.businessType}</Text>
             )}
           </View>
         </View>
 
-        <Button
-          title="Criar Conta"
+        {/* Botão de Submit Dourado */}
+        <TouchableOpacity
+          style={{
+            backgroundColor: THEME.gold,
+            borderRadius: 8,
+            padding: 16,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'row',
+            shadowColor: THEME.gold,
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+            elevation: 5,
+            marginBottom: 24,
+            opacity: loading ? 0.7 : 1,
+          }}
           onPress={handleSignUp}
-          loading={loading}
           disabled={loading}
-          style={commonStyles.mb4}
-        />
+        >
+          {loading ? (
+            <ActivityIndicator color={THEME.primary} size="small" />
+          ) : (
+            <Text style={{ color: THEME.primary, fontSize: 16, fontWeight: 'bold' }}>
+              Criar Conta
+            </Text>
+          )}
+        </TouchableOpacity>
 
+        {/* Login Link */}
         <View style={[commonStyles.rowCenter, commonStyles.mb4]}>
-          <Text style={[commonStyles.bodySmall, { color: colors.textSecondary }]}>
+          <Text style={[commonStyles.bodySmall, { color: THEME.textMuted }]}>
             Já tem uma conta?{' '}
           </Text>
           <TouchableOpacity
@@ -288,7 +346,7 @@ export function SignUp() {
             <Text
               style={[
                 commonStyles.bodySmall,
-                { color: colors.primary, fontWeight: '600' },
+                { color: THEME.gold, fontWeight: 'bold', fontSize: 15 },
               ]}
             >
               Entrar
@@ -296,11 +354,12 @@ export function SignUp() {
           </TouchableOpacity>
         </View>
 
-        <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 24 }}>
-          <Text style={[commonStyles.caption, { color: colors.textMuted, textAlign: 'center' }]}>
+        {/* Footer */}
+        <View style={{ borderTopWidth: 1, borderTopColor: THEME.border, paddingTop: 24 }}>
+          <Text style={[commonStyles.caption, { color: THEME.textMuted, textAlign: 'center' }]}>
             Ao criar uma conta, você concorda com nossos Termos de Uso
           </Text>
-          <Text style={[commonStyles.caption, { color: colors.textMuted, textAlign: 'center', marginTop: 4 }]}>
+          <Text style={[commonStyles.caption, { color: THEME.textMuted, textAlign: 'center', marginTop: 4 }]}>
             e Política de Privacidade
           </Text>
         </View>

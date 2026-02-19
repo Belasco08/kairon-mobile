@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "kairon-mobile",
+    "name": "Kairon",
     "slug": "kairon-mobile",
     "version": "1.0.0",
     "orientation": "default",
@@ -8,17 +8,17 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./src/assets/images/splash-icon.png",
+      "image": "./src/assets/images/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0F172A"
     },
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./src/assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./src/assets/images/icon.png",
+        "backgroundColor": "#0F172A"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,

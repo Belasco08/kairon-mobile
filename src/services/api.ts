@@ -1,6 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+//const API_URL = "https://192.169.1.4:8080";
 const API_URL = "https://kairon-api.onrender.com";
 
 export const api = axios.create({

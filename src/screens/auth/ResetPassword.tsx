@@ -4,19 +4,33 @@ import {
   Text,
   ScrollView,
   Alert,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  SafeAreaView,
+  StatusBar,
+  ActivityIndicator
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { authService } from '../../services/auth';
 import { Input } from '../../components/ui/Input';
-import { Button } from '../../components/ui/Button';
-import { Card } from '../../components/ui/Card';
-import { colors } from '../../styles/colors';
-import { commonStyles } from '../../styles/common';
-import { authStyles } from '../../styles/screens/auth';
 
 interface RouteParams {
   token: string;
 }
+
+// Tema Kairon Premium
+const THEME = {
+  primary: '#0F172A',
+  surface: '#1E293B',
+  gold: '#D4AF37',
+  goldLight: 'rgba(212, 175, 55, 0.1)',
+  textLight: '#FFFFFF',
+  textMuted: 'rgba(255, 255, 255, 0.7)',
+  border: 'rgba(212, 175, 55, 0.3)',
+};
 
 export function ResetPassword() {
   const navigation = useNavigation();
@@ -69,25 +83,44 @@ export function ResetPassword() {
   };
 
   return (
-    <ScrollView 
-      style={authStyles.container}
-      contentContainerStyle={{ flexGrow: 1 }}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={authStyles.background}>
-        <View style={authStyles.content}>
-          <View style={authStyles.header}>
-            <View style={authStyles.logoContainer}>
-              <Text style={[commonStyles.h1, { color: colors.primary }]}>K</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: THEME.primary }}>
+      <StatusBar barStyle="light-content" backgroundColor={THEME.primary} />
+      
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Botão de Voltar */}
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <MaterialIcons
+              name="arrow-back"
+              size={28}
+              color={THEME.gold}
+            />
+          </TouchableOpacity>
+
+          {/* HEADER / LOGO AREA */}
+          <View style={styles.header}>
+            <View style={styles.iconContainer}>
+              <MaterialIcons name="lock-reset" size={40} color={THEME.gold} />
             </View>
-            <Text style={authStyles.title}>Nova Senha</Text>
-            <Text style={authStyles.subtitle}>
-              Digite sua nova senha
+            <Text style={styles.title}>Nova Senha</Text>
+            <Text style={styles.subtitle}>
+              Digite sua nova senha abaixo
             </Text>
           </View>
 
-          <View style={authStyles.form}>
-            <Card>
+          {/* FORMULÁRIO */}
+          <View style={styles.formContainer}>
+            <View style={styles.inputGroup}>
               <Input
                 label="Nova Senha"
                 value={password}
@@ -99,7 +132,9 @@ export function ResetPassword() {
                 secureTextEntry
                 error={error.includes('senha') ? error : ''}
               />
+            </View>
 
+            <View style={styles.inputGroup}>
               <Input
                 label="Confirmar Senha"
                 value={confirmPassword}
@@ -109,31 +144,129 @@ export function ResetPassword() {
                 }}
                 placeholder="Digite a senha novamente"
                 secureTextEntry
-                style={{ marginTop: 16 }}
               />
-            </Card>
+            </View>
 
             {error && !error.includes('senha') && (
-              <Text style={authStyles.errorMessage}>{error}</Text>
+              <Text style={styles.errorMessage}>{error}</Text>
             )}
 
-            <Button
-              title={loading ? "Alterando..." : "Alterar Senha"}
+            {/* Botão Dourado Principal */}
+            <TouchableOpacity
+              style={[styles.primaryButton, loading && { opacity: 0.7 }]}
               onPress={handleSubmit}
-              loading={loading}
               disabled={loading}
-              style={{ marginTop: 24 }}
-            />
+            >
+              {loading ? (
+                <ActivityIndicator color={THEME.primary} size="small" />
+              ) : (
+                <Text style={styles.primaryButtonText}>
+                  Alterar Senha
+                </Text>
+              )}
+            </TouchableOpacity>
 
-            <Button
-              title="Cancelar"
+            {/* Botão Cancelar (Outline) */}
+            <TouchableOpacity
+              style={styles.secondaryButton}
               onPress={() => navigation.goBack()}
-              variant="outline"
-              style={{ marginTop: 12 }}
-            />
+              disabled={loading}
+            >
+              <Text style={styles.secondaryButtonText}>
+                Cancelar
+              </Text>
+            </TouchableOpacity>
           </View>
-        </View>
-      </View>
-    </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  scrollContent: {
+    flexGrow: 1,
+    padding: 24,
+    justifyContent: 'center'
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    padding: 8,
+    marginLeft: -8,
+    marginBottom: 16,
+    marginTop: Platform.OS === 'android' ? 20 : 0,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  iconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: THEME.goldLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: THEME.border,
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: THEME.gold,
+    marginBottom: 8,
+    textAlign: 'center'
+  },
+  subtitle: {
+    fontSize: 16,
+    color: THEME.textMuted,
+    textAlign: 'center'
+  },
+  formContainer: {
+    marginBottom: 24,
+  },
+  inputGroup: {
+    marginBottom: 16
+  },
+  errorMessage: {
+    color: '#EF4444', // Vermelho para erros graves
+    fontSize: 14,
+    marginBottom: 16,
+    textAlign: 'center'
+  },
+  primaryButton: {
+    backgroundColor: THEME.gold,
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    shadowColor: THEME.gold,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+    marginTop: 24,
+  },
+  primaryButtonText: {
+    color: THEME.primary,
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  secondaryButton: {
+    backgroundColor: 'transparent',
+    borderRadius: 8,
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: THEME.gold,
+    marginTop: 16,
+  },
+  secondaryButtonText: {
+    color: THEME.gold,
+    fontSize: 16,
+    fontWeight: 'bold',
+  }
+});
