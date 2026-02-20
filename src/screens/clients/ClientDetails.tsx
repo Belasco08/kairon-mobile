@@ -31,6 +31,7 @@ const theme = {
   textPrimary: '#FFFFFF',
   textSecondary: '#94A3B8',
   success: '#10B981',
+  danger: '#EF4444',       // Vermelho para cancelados
   border: 'rgba(255, 255, 255, 0.05)',
 };
 
@@ -77,10 +78,12 @@ export function ClientDetails() {
   const loadAppointments = async () => {
     try {
       setAppointmentsLoading(true);
-      const data = await appointmentService.list({
-        clientId,
-        limit: 10,
-      });
+      
+      // 👇 MUDANÇA AQUI: Chamando a rota específica do cliente
+      // Caso a listByClient não exista no seu serviço, crie-a como te mostrei.
+      // Se você preferir usar o list, tem que garantir que a query ?clientId= tá funcionando no Backend
+      const data = await appointmentService.listByClient(clientId); 
+      
       setAppointments(Array.isArray(data) ? data : []);
     } catch (error) {
       console.log(error);
@@ -101,6 +104,17 @@ export function ClientDetails() {
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+  };
+
+  // Função para traduzir o status corretamente e pegar a cor certa
+  const getStatusInfo = (status: string) => {
+    switch (status) {
+      case 'COMPLETED': return { text: 'Concluído', color: theme.success };
+      case 'CONFIRMED': return { text: 'Confirmado', color: theme.goldLight };
+      case 'CANCELLED': return { text: 'Cancelado', color: theme.danger };
+      case 'NO_SHOW':   return { text: 'Não Compareceu', color: theme.danger };
+      default:          return { text: 'Pendente', color: theme.gold };
+    }
   };
 
   if (loading) {
@@ -216,33 +230,39 @@ export function ClientDetails() {
                     />
                 </View>
               ) : (
-                appointments.map((item, index) => (
-                  <TouchableOpacity
-                    key={item.id || index}
-                    style={styles.appointmentCard}
-                    onPress={() => navigation.navigate('AppointmentDetails', { appointmentId: item.id })}
-                  >
-                    <View style={styles.appointmentHeader}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Feather name="calendar" size={14} color={theme.textSecondary} style={{ marginRight: 6 }}/>
-                            <Text style={styles.appointmentDate}>
-                                {item.startTime ? new Date(item.startTime).toLocaleDateString('pt-BR') : 'Data Indefinida'}
-                            </Text>
-                        </View>
-                        <Text style={[
-                            styles.appointmentStatus, 
-                            item.status === 'COMPLETED' ? { color: theme.success } : { color: theme.gold }
-                        ]}>
-                            {item.status === 'COMPLETED' ? 'Concluído' : 'Pendente'}
-                        </Text>
-                    </View>
-                    
-                    <View style={styles.appointmentBody}>
-                        <Text style={styles.appointmentService}>Serviço realizado</Text>
-                        <Text style={styles.appointmentPrice}>{formatCurrency(item.totalPrice)}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))
+                appointments.map((item, index) => {
+                  const statusInfo = getStatusInfo(item.status);
+                  const serviceName = item.serviceNames && item.serviceNames.length > 0 
+                                      ? item.serviceNames.join(", ") 
+                                      : 'Serviço Agendado';
+
+                  return (
+                    <TouchableOpacity
+                      key={item.id || index}
+                      style={styles.appointmentCard}
+                      onPress={() => navigation.navigate('AppointmentDetails', { appointmentId: item.id })}
+                    >
+                      <View style={styles.appointmentHeader}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                              <Feather name="calendar" size={14} color={theme.textSecondary} style={{ marginRight: 6 }}/>
+                              <Text style={styles.appointmentDate}>
+                                  {item.startTime ? new Date(item.startTime).toLocaleDateString('pt-BR') : 'Data Indefinida'}
+                              </Text>
+                          </View>
+                          <Text style={[styles.appointmentStatus, { color: statusInfo.color }]}>
+                              {statusInfo.text}
+                          </Text>
+                      </View>
+                      
+                      <View style={styles.appointmentBody}>
+                          <View style={{ flex: 1, paddingRight: 10 }}>
+                             <Text style={styles.appointmentService} numberOfLines={1}>{serviceName}</Text>
+                          </View>
+                          <Text style={styles.appointmentPrice}>{formatCurrency(item.totalPrice)}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })
               )}
             </View>
           )}

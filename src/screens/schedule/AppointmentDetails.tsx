@@ -159,6 +159,34 @@ export function AppointmentDetails() {
     Linking.openURL(`whatsapp://send?phone=${fullPhone}`);
   };
 
+  // 👇 NOVA FUNÇÃO: Enviar mensagem de Cancelamento
+  const handleMessageClientCancel = async () => {
+    const phone = getClientPhone();
+    if (!phone) return;
+
+    let startTimeDate = new Date();
+    try {
+      if (appointment) startTimeDate = parseISO(appointment.startTime);
+    } catch {}
+
+    const dataFmt = isValid(startTimeDate) ? format(startTimeDate, "dd/MM/yyyy") : "";
+    const horaFmt = isValid(startTimeDate) ? format(startTimeDate, "HH:mm") : "";
+
+    const cancelMessage = `Olá *${getClientName()}*. Informamos que o seu agendamento para o dia ${dataFmt} às ${horaFmt} com ${getProfessionalName()} foi *cancelado*. Qualquer dúvida, estamos à disposição.`;
+
+    const cleanPhone = phone.replace(/\D/g, "");
+    const fullPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
+    const url = `whatsapp://send?phone=${fullPhone}&text=${encodeURIComponent(cancelMessage)}`;
+    
+    const supported = await Linking.canOpenURL(url);
+    if (supported) {
+      await Linking.openURL(url);
+    } else {
+      Alert.alert("Erro", "WhatsApp não está instalado neste dispositivo.");
+    }
+  };
+
+
   const handleCancel = () => {
     Alert.alert(
       "Cancelar Agendamento",
@@ -168,7 +196,21 @@ export function AppointmentDetails() {
         {
           text: "Sim, cancelar",
           style: "destructive",
-          onPress: () => handleStatusChange("CANCELLED"),
+          onPress: async () => {
+            await handleStatusChange("CANCELLED");
+            
+            // Pergunta se deseja avisar o cliente via WhatsApp
+            if (getClientPhone()) {
+               Alert.alert(
+                 "Avisar Cliente",
+                 "Deseja enviar uma mensagem no WhatsApp informando o cancelamento?",
+                 [
+                   { text: "Não", style: "cancel" },
+                   { text: "Sim, Enviar", onPress: handleMessageClientCancel }
+                 ]
+               );
+            }
+          },
         },
       ],
     );

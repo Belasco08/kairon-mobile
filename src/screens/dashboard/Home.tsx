@@ -13,9 +13,11 @@ import {
   Linking,
   Alert,
   StyleSheet,
+  Modal,
 } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
-import { MaterialIcons as Icon, Feather } from "@expo/vector-icons";
+import { MaterialIcons as Icon, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage"; // 👈 IMPORTANTE: Adicionado AsyncStorage
 import { useWebSocket } from "../../contexts/WebSocketContext";
 
 import type { AppNavigation } from "../../@types/navigation";
@@ -139,6 +141,10 @@ export function Home() {
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([]);
   const [localCompany, setLocalCompany] = useState<any>(null);
 
+  // 👇 ESTADOS DO MODAL DE GAMIFICAÇÃO
+  const [showGoalModal, setShowGoalModal] = useState(false);
+  const [achievedGoal, setAchievedGoal] = useState<any>(null);
+
   const fetchCompanyData = async () => {
     const targetId = user?.companyId; 
     if (!targetId) return;
@@ -148,6 +154,40 @@ export function Home() {
     } catch (error) {
       console.error("Erro ao atualizar empresa na Home:", error);
     }
+  };
+
+  const checkGamificationGoal = async (revenue: number) => {
+      // 1. Encontra a maior meta que o usuário já ultrapassou
+      let highestGoalAchieved = null;
+      for (let i = SALES_GOALS.length - 1; i >= 0; i--) {
+          if (revenue >= SALES_GOALS[i].limit) {
+              highestGoalAchieved = SALES_GOALS[i];
+              break;
+          }
+      }
+
+      if (highestGoalAchieved) {
+          // 2. Cria uma chave única por Mês e por Nível para salvar no celular
+          // Ex: @kairon_goal_Ouro_02_2026
+          const currentMonthYear = format(new Date(), "MM_yyyy");
+          const storageKey = `@kairon_goal_${highestGoalAchieved.label}_${currentMonthYear}`;
+
+          try {
+              // 3. Verifica no celular se ele JÁ VIU essa meta nesse mês
+              const hasSeen = await AsyncStorage.getItem(storageKey);
+              
+              if (!hasSeen) {
+                  // Se ele não viu, prepara o modal para exibir
+                  setAchievedGoal(highestGoalAchieved);
+                  setShowGoalModal(true);
+                  
+                  // Salva no celular que ele viu, para nunca mais mostrar esse nível neste mês!
+                  await AsyncStorage.setItem(storageKey, 'true');
+              }
+          } catch (e) {
+              console.error("Erro ao acessar AsyncStorage:", e);
+          }
+      }
   };
 
   const loadData = async () => {
@@ -166,7 +206,13 @@ export function Home() {
       let financeData = null;
       if (user?.role === "OWNER" || user?.role === "PROFESSIONAL") {
         try {
+          // Busca o faturamento do mês atual
           financeData = await financeService.getDashboard({ period: "month" });
+          
+          // LÓGICA PERSISTENTE DE VERIFICAÇÃO DE META
+          if (financeData && financeData.revenue) {
+             await checkGamificationGoal(financeData.revenue);
+          }
         } catch (error: any) { }
       }
       setDashboardData(financeData);
@@ -231,8 +277,6 @@ export function Home() {
     return "Boa noite";
   };
 
-  
-
   const getStatusText = (status: string) => {
     switch (status) {
       case "PENDING": return "Pendente";
@@ -255,14 +299,11 @@ export function Home() {
     const displayProgress = currentRevenue >= 1000000 ? 100 : progress;
 
     return (
-      // 👇 AGORA O CARD É CLICÁVEL E LEVA PARA A TELA DE EXPLICAÇÃO DAS METAS
       <TouchableOpacity 
         activeOpacity={0.8}
         onPress={() => navigation.navigate("GoalsInfoScreen")} 
         style={styles.goalCard}
       >
-
-    
         <View style={styles.goalHeaderRow}>
           <View>
             <Text style={styles.goalLabel}>
@@ -504,6 +545,44 @@ export function Home() {
         <View style={{ height: 20 }} />
 
       </ScrollView>
+
+      {/* ============================================================================== */}
+      {/* 🏆 MODAL DE GAMIFICAÇÃO (META BATIDA) */}
+      {/* ============================================================================== */}
+      <Modal
+        visible={showGoalModal}
+        transparent={true}
+        animationType="slide"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { borderColor: achievedGoal?.color || theme.gold }]}>
+            
+            <View style={[styles.trophyContainer, { backgroundColor: achievedGoal?.color + '20', borderColor: achievedGoal?.color }]}>
+              <MaterialCommunityIcons name="trophy-award" size={80} color={achievedGoal?.color || theme.gold} />
+            </View>
+
+            <Text style={[styles.modalTitle, { color: achievedGoal?.color || theme.gold }]}>Nível {achievedGoal?.label}!</Text>
+            <Text style={styles.modalText}>
+              Parabéns, {user?.name?.split(' ')[0] || 'Profissional'}! Você superou a marca de {achievedGoal ? formatCurrency(achievedGoal.limit) : 'R$'} de faturamento neste mês!
+            </Text>
+
+            <View style={styles.modalValueBox}>
+              <Text style={styles.modalValueLabel}>Faturamento Atual</Text>
+              <Text style={styles.modalValueAmount}>{dashboardData ? formatCurrency(dashboardData.revenue) : 'R$ 0,00'}</Text>
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.modalButton, { backgroundColor: achievedGoal?.color || theme.gold }]}
+              onPress={() => setShowGoalModal(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.modalButtonText}>Incrível! Continuar Crescendo</Text>
+            </TouchableOpacity>
+
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -568,7 +647,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: theme.border,
-    shadowColor: theme.gold, // Brilho leve
+    shadowColor: theme.gold, 
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 10,
@@ -684,7 +763,7 @@ const styles = StyleSheet.create({
   premiumBanner: {
     marginHorizontal: 20,
     marginBottom: 24,
-    backgroundColor: 'rgba(212, 175, 55, 0.1)', // Fundo dourado transparente
+    backgroundColor: 'rgba(212, 175, 55, 0.1)', 
     borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(212, 175, 55, 0.4)',
@@ -784,7 +863,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   confirmButton: {
-    backgroundColor: 'rgba(16, 185, 129, 0.15)', // Verde transparente
+    backgroundColor: 'rgba(16, 185, 129, 0.15)', 
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 10,
@@ -799,4 +878,16 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 13,
   },
+
+  // 👇 ESTILOS DO MODAL DE CONQUISTA
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContent: { backgroundColor: theme.cardBg, width: '100%', borderRadius: 32, padding: 24, alignItems: 'center', borderWidth: 2, elevation: 10 },
+  trophyContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', marginBottom: 20, borderWidth: 2 },
+  modalTitle: { fontSize: 28, fontWeight: '900', marginBottom: 12, textAlign: 'center' },
+  modalText: { fontSize: 15, color: "#fff", textAlign: 'center', lineHeight: 22, marginBottom: 24, paddingHorizontal: 10 },
+  modalValueBox: { backgroundColor: 'rgba(0,0,0,0.3)', width: '100%', padding: 16, borderRadius: 16, alignItems: 'center', marginBottom: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  modalValueLabel: { color: "#fff", fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
+  modalValueAmount: { color: theme.success, fontSize: 32, fontWeight: '900' },
+  modalButton: { width: '100%', paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
+  modalButtonText: { color: theme.primary, fontSize: 16, fontWeight: 'bold' }
 });

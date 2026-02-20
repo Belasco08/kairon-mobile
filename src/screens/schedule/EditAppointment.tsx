@@ -9,13 +9,17 @@ import {
   SafeAreaView,
   StatusBar,
   StyleSheet,
-  Platform
+  Platform,
+  Linking
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { Feather } from '@expo/vector-icons'; // Padronizando para Feather
+import { Feather } from '@expo/vector-icons'; 
+import DateTimePicker from '@react-native-community/datetimepicker'; // 👈 NOVO IMPORT
 import { appointmentService } from '../../services/appointments';
 import { serviceService } from '../../services/services';
 import { Button } from '../../components/ui/Button';
+import { format, parseISO, isValid } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 // ==============================================================================
 // 🎨 TEMA KAIRON PREMIUM
@@ -47,6 +51,12 @@ interface AppointmentService {
 
 interface Appointment {
   id: string;
+  startTime: string; // 👈 Adicionado
+  clientPhone?: string; // 👈 Adicionado
+  clientName?: string; // 👈 Adicionado
+  client?: any; // 👈 Adicionado
+  professionalName?: string; // 👈 Adicionado
+  professional?: any; // 👈 Adicionado
   totalPrice: number;
   appointmentServices: AppointmentService[];
 }
@@ -63,6 +73,12 @@ export function EditAppointment() {
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [originalTotal, setOriginalTotal] = useState(0);
 
+  // 👇 NOVOS ESTADOS PARA O DATE PICKER
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'date' | 'time'>('date');
+  const [dateChanged, setDateChanged] = useState(false); // Para saber se precisa mandar msg no Whats
+
   useEffect(() => {
     loadData();
   }, []);
@@ -74,10 +90,8 @@ export function EditAppointment() {
         serviceService.list(),
       ]);
 
-      // 👇 CORREÇÃO DO ERRO 'undefined': Tenta ler o formato aninhado, o flat, ou devolve array vazio
       const rawServicesList = appointmentRes.appointmentServices || appointmentRes.services || [];
 
-      // Mapeando para garantir serviceId, suportando as duas formas de API
       const mappedAppointment: Appointment = {
         ...appointmentRes,
         appointmentServices: rawServicesList.map((item: any) => ({
@@ -94,6 +108,15 @@ export function EditAppointment() {
       );
       setSelectedServices(initialSelected);
       setOriginalTotal(mappedAppointment.totalPrice);
+
+      // Seta a data inicial do seletor
+      if (mappedAppointment.startTime) {
+          const parsedDate = parseISO(mappedAppointment.startTime);
+          if (isValid(parsedDate)) {
+              setSelectedDate(parsedDate);
+          }
+      }
+
     } catch (error) {
       Alert.alert('Erro', 'Não foi possível carregar os dados');
       navigation.goBack();
@@ -128,6 +151,57 @@ export function EditAppointment() {
     return selectedServices.filter((id) => id === serviceId).length;
   };
 
+  // 👇 LÓGICA DO DATE PICKER
+  const showMode = (currentMode: 'date' | 'time') => {
+    setShowDatePicker(true);
+    setPickerMode(currentMode);
+  };
+
+  const onChangeDate = (event: any, selectedValue?: Date) => {
+    setShowDatePicker(Platform.OS === 'ios');
+    if (selectedValue) {
+      setSelectedDate(selectedValue);
+      setDateChanged(true);
+    }
+  };
+
+  // 👇 LÓGICA DO WHATSAPP DE ALTERAÇÃO
+  const handleMessageClientChange = async () => {
+      if (!appointment) return;
+      
+      const phone = appointment.clientPhone || appointment.client?.phone;
+      if (!phone) {
+          Alert.alert("Aviso", "Este cliente não possui telefone cadastrado.");
+          return navigation.goBack();
+      }
+
+      const clientName = appointment.clientName || appointment.client?.name || "Cliente";
+      const profName = appointment.professionalName || appointment.professional?.name || "Profissional";
+      
+      const dataFmt = format(selectedDate, "dd/MM/yyyy");
+      const horaFmt = format(selectedDate, "HH:mm");
+
+      const msg = `Olá *${clientName}*. Informamos que o seu agendamento com ${profName} foi *alterado*. O seu novo horário é no dia ${dataFmt} às ${horaFmt}. Te aguardamos!`;
+
+      const cleanPhone = phone.replace(/\D/g, "");
+      const fullPhone = cleanPhone.startsWith("55") ? cleanPhone : `55${cleanPhone}`;
+      const url = `whatsapp://send?phone=${fullPhone}&text=${encodeURIComponent(msg)}`;
+      
+      try {
+          const supported = await Linking.canOpenURL(url);
+          if (supported) {
+              await Linking.openURL(url);
+          } else {
+              Alert.alert("Erro", "WhatsApp não está instalado neste dispositivo.");
+          }
+      } catch (e) {
+          console.error(e);
+      } finally {
+          navigation.goBack();
+      }
+  };
+
+  // 👇 SALVAR ALTERAÇÕES
   const handleSave = async () => {
     if (selectedServices.length === 0) {
       Alert.alert('Atenção', 'Selecione pelo menos um serviço');
@@ -136,16 +210,31 @@ export function EditAppointment() {
 
     setSaving(true);
     try {
-      await appointmentService.updateServices(appointmentId, selectedServices);
+      const formattedDateForApi = selectedDate.toISOString();
 
-      Alert.alert('Sucesso!', 'Agendamento atualizado com sucesso', [
-        {
-          text: 'OK',
-          onPress: () => navigation.goBack(),
-        },
-      ]);
+      // 👇 AJUSTADO: Enviando 'serviceIds' em vez de 'services' para bater com o Java
+      await appointmentService.update(appointmentId, {
+          serviceIds: selectedServices, 
+          startTime: formattedDateForApi
+      });
+
+      if (dateChanged) {
+         Alert.alert(
+            "Sucesso!", 
+            "Agendamento e Horário atualizados com sucesso.\nDeseja avisar o cliente da alteração de horário?",
+            [
+               { text: "Não avisar", style: "cancel", onPress: () => navigation.goBack() },
+               { text: "Avisar no WhatsApp", onPress: handleMessageClientChange }
+            ]
+         );
+      } else {
+         Alert.alert('Sucesso!', 'Agendamento atualizado com sucesso', [
+           { text: 'OK', onPress: () => navigation.goBack() },
+         ]);
+      }
+
     } catch (error: any) {
-      Alert.alert('Erro', error.response?.data?.error || 'Erro ao salvar');
+      Alert.alert('Erro', error.response?.data?.error || 'Erro ao salvar. Verifique se o horário está disponível.');
     } finally {
       setSaving(false);
     }
@@ -186,14 +275,50 @@ export function EditAppointment() {
           <Feather name="arrow-left" size={24} color={theme.gold} />
         </TouchableOpacity>
         <View style={{ alignItems: 'center' }}>
-            <Text style={styles.headerTitle}>Editar Serviços</Text>
-            <Text style={styles.headerSubtitle}>Ajuste os serviços realizados</Text>
+            <Text style={styles.headerTitle}>Editar Agendamento</Text>
+            <Text style={styles.headerSubtitle}>Ajuste data, hora ou serviços</Text>
         </View>
         <View style={{ width: 28 }} />
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
         
+        {/* 👇 NOVO: SEÇÃO DE DATA E HORA 👇 */}
+        <View style={{ marginBottom: 30 }}>
+           <Text style={styles.sectionMainTitle}>Data e Hora</Text>
+           <View style={styles.dateTimeContainer}>
+              <TouchableOpacity style={styles.dateTimeButton} onPress={() => showMode('date')} activeOpacity={0.7}>
+                 <Feather name="calendar" size={20} color={theme.gold} />
+                 <View style={{ marginLeft: 12 }}>
+                    <Text style={styles.dateTimeLabel}>Data Selecionada</Text>
+                    <Text style={styles.dateTimeValue}>{format(selectedDate, "dd 'de' MMMM", { locale: ptBR })}</Text>
+                 </View>
+              </TouchableOpacity>
+
+              <View style={styles.verticalDivider} />
+
+              <TouchableOpacity style={styles.dateTimeButton} onPress={() => showMode('time')} activeOpacity={0.7}>
+                 <Feather name="clock" size={20} color={theme.gold} />
+                 <View style={{ marginLeft: 12 }}>
+                    <Text style={styles.dateTimeLabel}>Horário</Text>
+                    <Text style={styles.dateTimeValue}>{format(selectedDate, "HH:mm")}</Text>
+                 </View>
+              </TouchableOpacity>
+           </View>
+        </View>
+
+        {showDatePicker && (
+           <DateTimePicker
+             value={selectedDate}
+             mode={pickerMode}
+             is24Hour={true}
+             display="default"
+             onChange={onChangeDate}
+             themeVariant="dark" // Só funciona no iOS
+           />
+        )}
+
+
         {/* LISTA DE SERVIÇOS */}
         <View style={{ marginBottom: 24 }}>
           <Text style={styles.sectionMainTitle}>Serviços Disponíveis</Text>
@@ -230,7 +355,6 @@ export function EditAppointment() {
                             {formatCurrency(service.price)}
                           </Text>
 
-                          {/* CONTROLES DE QUANTIDADE (Aparecem se o item estiver selecionado e houver mais de 1) */}
                           {isSelected && count > 1 && (
                             <View style={styles.quantityControl}>
                               <TouchableOpacity
@@ -356,8 +480,43 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '800',
     color: theme.textPrimary,
-    marginBottom: 20,
+    marginBottom: 16,
   },
+
+  // 👇 ESTILOS DO DATE PICKER
+  dateTimeContainer: {
+     flexDirection: 'row',
+     backgroundColor: theme.cardBg,
+     borderRadius: 16,
+     borderWidth: 1,
+     borderColor: theme.border,
+     overflow: 'hidden'
+  },
+  dateTimeButton: {
+     flex: 1,
+     flexDirection: 'row',
+     alignItems: 'center',
+     padding: 16,
+  },
+  verticalDivider: {
+     width: 1,
+     backgroundColor: theme.border,
+  },
+  dateTimeLabel: {
+     fontSize: 12,
+     color: theme.textSecondary,
+     fontWeight: '600',
+     textTransform: 'uppercase',
+  },
+  dateTimeValue: {
+     fontSize: 15,
+     color: theme.textPrimary,
+     fontWeight: '700',
+     marginTop: 2,
+     textTransform: 'capitalize'
+  },
+
+
   categoryTitle: {
     fontSize: 14,
     fontWeight: '800',

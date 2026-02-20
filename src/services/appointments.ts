@@ -91,6 +91,12 @@ export const appointmentService = {
     return response.data;
   },
 
+  // 👇 NOVA FUNÇÃO: Busca os agendamentos apenas de um cliente específico
+  listByClient: async (clientId: string): Promise<Appointment[]> => {
+    const response = await api.get(`/appointments/client/${clientId}`);
+    return response.data;
+  },
+
   get: async (id: string): Promise<Appointment> => {
     const response = await api.get(`/appointments/${id}`);
     return response.data;
@@ -101,7 +107,7 @@ export const appointmentService = {
     return response.data;
   },
 
-  // 👇 ADICIONADO: Método genérico de atualização (Resolve o erro da Home)
+  // Método genérico de atualização (Resolve o erro da Home)
   update: async (id: string, data: Partial<Appointment> | any) => {
     // Se você estiver apenas atualizando o status e seu backend for estrito,
     // ele pode preferir a rota /status abaixo, mas geralmente PUT /appointments/{id} funciona.
