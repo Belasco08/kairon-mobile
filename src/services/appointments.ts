@@ -92,9 +92,16 @@ export const appointmentService = {
   },
 
   // 👇 NOVA FUNÇÃO: Busca os agendamentos apenas de um cliente específico
-  listByClient: async (clientId: string): Promise<Appointment[]> => {
-    const response = await api.get(`/appointments/client/${clientId}`);
-    return response.data;
+  // Adicione ou substitua essa função dentro do seu appointmentService
+  listByClient: async (clientId: string) => {
+    try {
+      // 👇 A URL tem que ser exatamente esta para bater no endpoint novo do Java!
+      const response = await api.get(`/appointments/client/${clientId}`);
+      return response.data;
+    } catch (error) {
+      console.error("Erro ao buscar histórico do cliente:", error);
+      throw error;
+    }
   },
 
   get: async (id: string): Promise<Appointment> => {

@@ -17,7 +17,7 @@ import {
 } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { MaterialIcons as Icon, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage"; // 👈 IMPORTANTE: Adicionado AsyncStorage
+import AsyncStorage from "@react-native-async-storage/async-storage"; 
 import { useWebSocket } from "../../contexts/WebSocketContext";
 
 import type { AppNavigation } from "../../@types/navigation";
@@ -42,6 +42,8 @@ const theme = {
   textPrimary: '#FFFFFF',
   textSecondary: '#94A3B8',
   success: '#10B981',
+  danger: '#EF4444',       // Vermelho para o botão de cancelar
+  info: '#38BDF8',         // Azul claro para o histórico
   border: 'rgba(255, 255, 255, 0.05)',
 };
 
@@ -58,6 +60,7 @@ const SALES_GOALS = [
   { limit: 1000000, label: "Diamante", color: "#38BDF8", nextLabel: "Lenda" }, 
 ];
 
+// 👇 ADICIONADO: lastServiceName e lastServiceDate
 interface Appointment {
   id: string;
   startTime: string;
@@ -66,6 +69,8 @@ interface Appointment {
   clientPhone?: string;
   professionalName: string;
   totalPrice: number;
+  lastServiceName?: string; 
+  lastServiceDate?: string; 
 }
 
 // ==============================================================================
@@ -109,6 +114,31 @@ Te aguardamos na *{EMPRESA}*! 👊`;
   msg = msg.replace(/{VALOR}/g, valorFmt);
   msg = msg.replace(/{ENDERECO}/g, company?.address || "Endereço não informado");
   msg = msg.replace(/{EMPRESA}/g, company?.name || "Barbearia");
+
+  return msg;
+};
+
+// 👇 NOVA FUNÇÃO PARA MENSAGEM DE CANCELAMENTO
+const buildWhatsAppCancelMessage = (
+  appointment: Appointment,
+  company: any
+) => {
+  const defaultTemplate = `Olá *{CLIENTE}*, tudo bem?
+Passando para avisar que seu agendamento do dia *{DATA}* às *{HORA}* precisou ser cancelado. 
+
+Qualquer dúvida, estamos à disposição!
+*{EMPRESA}*`;
+
+  let msg = defaultTemplate;
+
+  const dateObj = parseISO(appointment.startTime);
+  const dataFmt = format(dateObj, "dd/MM/yyyy");
+  const horaFmt = format(dateObj, "HH:mm");
+
+  msg = msg.replace(/{CLIENTE}/g, appointment.clientName || "Cliente");
+  msg = msg.replace(/{DATA}/g, dataFmt);
+  msg = msg.replace(/{HORA}/g, horaFmt);
+  msg = msg.replace(/{EMPRESA}/g, company?.name || "Nossa equipe");
 
   return msg;
 };
@@ -168,7 +198,6 @@ export function Home() {
 
       if (highestGoalAchieved) {
           // 2. Cria uma chave única por Mês e por Nível para salvar no celular
-          // Ex: @kairon_goal_Ouro_02_2026
           const currentMonthYear = format(new Date(), "MM_yyyy");
           const storageKey = `@kairon_goal_${highestGoalAchieved.label}_${currentMonthYear}`;
 
@@ -254,6 +283,49 @@ export function Home() {
       Alert.alert("Erro", "Não foi possível confirmar o agendamento.");
       setLoading(false);
     }
+  };
+
+  // 👇 ATUALIZADO: ENVIA WHATSAPP AO CANCELAR
+  const handleCancelAppointment = (appointment: Appointment) => {
+    Alert.alert(
+      "Cancelar Agendamento",
+      `Tem certeza que deseja cancelar o agendamento de ${appointment.clientName}?`,
+      [
+        { text: "Não", style: "cancel" },
+        { 
+          text: "Sim, Cancelar", 
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              await appointmentService.updateStatus(appointment.id, "CANCELLED");
+              
+              // 👇 CHAMA O WHATSAPP APÓS CANCELAR
+              if (appointment.clientPhone) {
+                const phone = appointment.clientPhone.replace(/\D/g, "");
+                const fullPhone = phone.startsWith("55") ? phone : `55${phone}`;
+                const message = buildWhatsAppCancelMessage(appointment, localCompany);
+                const url = `whatsapp://send?phone=${fullPhone}&text=${encodeURIComponent(message)}`;
+                
+                const supported = await Linking.canOpenURL(url);
+                if (supported) {
+                  await Linking.openURL(url);
+                } else {
+                  Alert.alert("Sucesso", "Cancelado, mas WhatsApp não instalado.");
+                }
+              } else {
+                Alert.alert("Sucesso", "Agendamento cancelado (Cliente sem telefone).");
+              }
+              
+              loadData(); 
+            } catch (error) {
+              Alert.alert("Erro", "Não foi possível cancelar o agendamento.");
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   useEffect(() => {
@@ -488,10 +560,31 @@ export function Home() {
                             <View style={styles.clientIconBg}>
                                 <Feather name="user" size={18} color={theme.gold} />
                             </View>
-                            <View>
+                            <View style={{ flex: 1 }}>
                                 <Text style={styles.clientNameText}>
                                     {appointment.clientName || "Cliente"}
                                 </Text>
+
+                                {/* 👇 NOVO: NOME DO PROFISSIONAL (EXCLUSIVO PARA O OWNER) 👇 */}
+                                {user?.role === "OWNER" && (
+                                    <View style={styles.professionalRow}>
+                                        <Feather name="scissors" size={10} color={theme.textSecondary} />
+                                        <Text style={styles.professionalText} numberOfLines={1}>
+                                            {appointment.professionalName || "Profissional não atribuído"}
+                                        </Text>
+                                    </View>
+                                )}
+                                
+                                {/* HISTÓRICO DO CLIENTE */}
+                                {appointment.lastServiceName && appointment.lastServiceDate && (
+                                    <View style={styles.lastVisitRow}>
+                                        <Feather name="rotate-ccw" size={10} color={theme.info} />
+                                        <Text style={styles.lastVisitText} numberOfLines={1}>
+                                            Último: {appointment.lastServiceName} ({format(parseISO(appointment.lastServiceDate), "dd/MM")})
+                                        </Text>
+                                    </View>
+                                )}
+
                                 <Text style={styles.clientPriceText}>
                                     {appointment.clientPhone ? formatCurrency(appointment.totalPrice) : 'Sem telefone'}
                                 </Text>
@@ -515,15 +608,25 @@ export function Home() {
                              </Text>
                          </View>
                          
-                         {/* Botão de Ação Rápida */}
+                         {/* BOTÕES DE AÇÃO RÁPIDA (CONFIRMAR / CANCELAR) */}
                          {appointment.status === "PENDING" && (
-                            <TouchableOpacity
-                                onPress={() => handleConfirmAppointment(appointment)}
-                                style={styles.confirmButton}
-                            >
-                                <Text style={styles.confirmButtonText}>Confirmar</Text>
-                                <Feather name="check" size={14} color={theme.success} />
-                            </TouchableOpacity>
+                            <View style={styles.actionButtonsRow}>
+                                <TouchableOpacity
+                                    onPress={() => handleCancelAppointment(appointment)}
+                                    style={styles.cancelButton}
+                                >
+                                    <Text style={styles.cancelButtonText}>Cancelar</Text>
+                                    <Feather name="x" size={14} color={theme.danger} />
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    onPress={() => handleConfirmAppointment(appointment)}
+                                    style={styles.confirmButton}
+                                >
+                                    <Text style={styles.confirmButtonText}>Confirmar</Text>
+                                    <Feather name="check" size={14} color={theme.success} />
+                                </TouchableOpacity>
+                            </View>
                          )}
                     </View>
                 </TouchableOpacity>
@@ -827,6 +930,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    flex: 1, // 👇 Evita que os textos empurrem o layout
   },
   clientIconBg: {
     backgroundColor: 'rgba(212, 175, 55, 0.1)',
@@ -838,6 +942,33 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: theme.textPrimary,
   },
+  
+  // 👇 NOVOS ESTILOS DO HISTÓRICO E PROFISSIONAL 👇
+  professionalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  professionalText: {
+    fontSize: 12,
+    color: theme.textSecondary,
+    fontWeight: '600',
+  },
+  lastVisitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+    marginBottom: 2,
+  },
+  lastVisitText: {
+    fontSize: 11,
+    color: theme.info,
+    fontWeight: '600',
+  },
+  
   clientPriceText: {
     fontSize: 13,
     color: theme.textSecondary,
@@ -862,9 +993,30 @@ const styles = StyleSheet.create({
     color: theme.textSecondary,
     fontWeight: '600',
   },
+  
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  cancelButton: {
+    backgroundColor: 'rgba(239, 68, 68, 0.1)', 
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  cancelButtonText: {
+    color: theme.danger,
+    fontWeight: '800',
+    fontSize: 13,
+  },
   confirmButton: {
     backgroundColor: 'rgba(16, 185, 129, 0.15)', 
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
     flexDirection: 'row',
@@ -879,7 +1031,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
-  // 👇 ESTILOS DO MODAL DE CONQUISTA
+  // Modal Gamification
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalContent: { backgroundColor: theme.cardBg, width: '100%', borderRadius: 32, padding: 24, alignItems: 'center', borderWidth: 2, elevation: 10 },
   trophyContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', marginBottom: 20, borderWidth: 2 },

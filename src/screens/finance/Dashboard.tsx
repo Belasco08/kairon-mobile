@@ -12,11 +12,15 @@ import {
   Platform,
   Alert,
   Image,
-  useWindowDimensions 
+  useWindowDimensions,
+  Modal 
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LineChart, PieChart } from 'react-native-chart-kit';
+
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 
 import { financeService } from '../../services/finance';
 import { PremiumGate } from '../../components/PremiumGate';
@@ -36,9 +40,10 @@ const theme = {
   success: '#10B981',
   danger: '#EF4444',
   warning: '#F59E0B',
+  info: '#38BDF8',
+  tableHeader: '#0B1120',
 };
 
-// PALETA ESTENDIDA
 const CHART_COLORS = [
   '#D4AF37', '#38BDF8', '#10B981', '#F472B6', '#A78BFA', '#F59E0B', 
   '#818CF8', '#FB7185', '#34D399', '#60A5FA', '#FBBF24', '#C084FC',
@@ -61,6 +66,27 @@ interface RevenueData {
   values: number[];
 }
 
+interface MonthlyHistoryData {
+  id: string; // Ex: '2026-02'
+  period: string;
+  income: number;
+  expense: number;
+  profit: number;
+  margin: string;
+}
+
+// Interface para os registros detalhados do Modal
+interface DetailedRecord {
+  id: string;
+  type: 'revenue' | 'expense';
+  amount: number;
+  description: string;
+  date: string;
+  category: string;
+  categoryLabel: string;
+  reference?: string;
+}
+
 export function FinanceDashboard() {
   const navigation = useNavigation<any>();
   const { width: screenWidth } = useWindowDimensions(); 
@@ -70,6 +96,8 @@ export function FinanceDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<Period>('day');
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  
+  const [tableFilter, setTableFilter] = useState<'WEEK' | 'MONTH'>('MONTH');
 
   const [summary, setSummary] = useState<FinanceSummary>({
     totalRevenue: 0, totalExpenses: 0, netProfit: 0, appointmentsCount: 0, averageTicket: 0,
@@ -78,11 +106,17 @@ export function FinanceDashboard() {
   const [revenueData, setRevenueData] = useState<RevenueData>({ labels: [], values: [] });
   const [pieData, setPieData] = useState<any[]>([]); 
   const [expenseChartData, setExpenseChartData] = useState<any[]>([]);
+  const [monthlyHistory, setMonthlyHistory] = useState<MonthlyHistoryData[]>([]);
 
   const [totalServicesCount, setTotalServicesCount] = useState(0);
   const [totalExpensesCount, setTotalExpensesCount] = useState(0);
 
-  // 👇 AGORA BLOQUEIA TUDO QUE NÃO SEJA O 'DAY' (HOJE)
+  // 👇 ESTADOS DO MODAL DE DETALHES 👇
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+  const [selectedMonthName, setSelectedMonthName] = useState('');
+  const [monthDetails, setMonthDetails] = useState<DetailedRecord[]>([]);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+
   const isCurrentPeriodLocked = user?.plan !== 'PLUS' && period !== 'day';
 
   const loadData = useCallback(async () => {
@@ -91,6 +125,7 @@ export function FinanceDashboard() {
         setRevenueData({ labels: [], values: [] });
         setPieData([]);
         setExpenseChartData([]);
+        setMonthlyHistory([]);
         setLoading(false);
         setRefreshing(false);
         return;
@@ -99,9 +134,10 @@ export function FinanceDashboard() {
     try {
       setLoading(true);
       
-      const [dashboard, expenses] = await Promise.all([
+      const [dashboard, expenses, historyData] = await Promise.all([
         financeService.getDashboard({ period }),
-        user?.plan === 'PLUS' ? financeService.getExpensesChart({ period }) : Promise.resolve([])
+        user?.plan === 'PLUS' ? financeService.getExpensesChart({ period }) : Promise.resolve([]),
+        user?.plan === 'PLUS' ? (tableFilter === 'WEEK' ? financeService.getWeeklyHistory() : financeService.getMonthlyHistory()) : Promise.resolve([])
       ]);
       
       setSummary({
@@ -111,6 +147,8 @@ export function FinanceDashboard() {
         appointmentsCount: dashboard.appointmentCount || 0,
         averageTicket: dashboard.averageTicket || 0,
       });
+
+      setMonthlyHistory(historyData); 
 
       const evolution = dashboard.dailyEvolution || [];
       const rawLabels = evolution.map((item: any) => {
@@ -168,7 +206,7 @@ export function FinanceDashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [period, user?.plan, isCurrentPeriodLocked]);
+  }, [period, user?.plan, isCurrentPeriodLocked, tableFilter]);
 
   useEffect(() => { loadData(); }, [loadData]);
   const onRefresh = () => { setRefreshing(true); loadData(); };
@@ -176,17 +214,158 @@ export function FinanceDashboard() {
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 
+  // 👇 NOVA FUNÇÃO PARA ALTERAR O FILTRO E BUSCAR DADOS IMEDIATAMENTE 👇
+  const handleFilterChange = async (filter: 'WEEK' | 'MONTH') => {
+      setTableFilter(filter);
+      if (user?.plan !== 'PLUS') return;
+      
+      try {
+          const data = filter === 'WEEK' 
+              ? await financeService.getWeeklyHistory() 
+              : await financeService.getMonthlyHistory();
+          setMonthlyHistory(data);
+      } catch(e) {
+          console.error(e);
+      }
+  };
+
+  // 👇 FUNÇÃO PARA ABRIR O MODAL E BUSCAR DETALHES 👇
+  const handleOpenDetails = async (monthId: string, monthName: string) => {
+      setSelectedMonthName(monthName);
+      setDetailsModalVisible(true);
+      setLoadingDetails(true);
+
+      try {
+          // Busca o extrato completo e filtra apenas os daquele mês (ex: começa com "2026-02")
+          const allRecords = await financeService.getRecords();
+          const filteredRecords = allRecords.filter((record: any) => record.date.startsWith(monthId));
+          setMonthDetails(filteredRecords);
+      } catch (error) {
+          console.error("Erro ao buscar detalhes:", error);
+          Alert.alert("Erro", "Não foi possível carregar os detalhes do mês.");
+      } finally {
+          setLoadingDetails(false);
+      }
+  };
+
   const generatePDF = async () => {
-     if (user?.plan !== 'PLUS') {
-         Alert.alert("Premium 🏆", "Faça o upgrade para gerar relatórios financeiros em PDF com a logo da sua empresa.");
-         navigation.navigate('SubscriptionScreen');
-         return;
-     }
-     setGeneratingPdf(true);
-     setTimeout(() => {
-         setGeneratingPdf(false);
-         Alert.alert("Sucesso", "Relatório gerado com sucesso!");
-     }, 2000); 
+    if (user?.plan !== 'PLUS') {
+        Alert.alert("Premium 🏆", "Faça o upgrade para gerar relatórios financeiros em PDF.");
+        navigation.navigate('SubscriptionScreen');
+        return;
+    }
+
+    try {
+        setGeneratingPdf(true);
+
+        const dataAtual = new Date().toLocaleDateString('pt-BR');
+        let periodoNome = 'Hoje';
+        if (period === 'week') periodoNome = 'Desta Semana';
+        if (period === 'month') periodoNome = 'Deste Mês';
+        if (period === 'year') periodoNome = 'Deste Ano';
+
+        const htmlContent = `
+          <html>
+            <head>
+              <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+              <style>
+                body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 30px; color: #333; background: #fff; }
+                .header { text-align: center; border-bottom: 2px solid #D4AF37; padding-bottom: 20px; margin-bottom: 30px; }
+                .title { font-size: 28px; font-weight: 800; color: #0F172A; text-transform: uppercase; letter-spacing: 1px; }
+                .subtitle { font-size: 14px; color: #64748B; margin-top: 5px; }
+                
+                .summary-container { display: flex; justify-content: space-between; margin-bottom: 40px; }
+                .summary-card { background: #F8FAFC; padding: 20px; border-radius: 12px; width: 30%; text-align: center; border: 1px solid #E2E8F0; }
+                .summary-card.profit { background: #ECFDF5; border-color: #10B981; }
+                .summary-title { font-size: 12px; text-transform: uppercase; color: #64748B; margin-bottom: 8px; font-weight: bold; }
+                .summary-value { font-size: 24px; font-weight: 900; color: #0F172A; }
+                .profit-value { color: #10B981; }
+                .expense-value { color: #EF4444; }
+                
+                h3 { color: #0F172A; margin-top: 20px; border-bottom: 1px solid #E2E8F0; padding-bottom: 10px; font-size: 18px; text-transform: uppercase; }
+                
+                table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+                th { background-color: #0F172A; color: #fff; padding: 14px 10px; text-align: left; font-size: 12px; text-transform: uppercase; }
+                td { padding: 14px 10px; border-bottom: 1px solid #E2E8F0; color: #334155; }
+                tr:nth-child(even) { background-color: #F8FAFC; }
+                .text-right { text-align: right; }
+                .text-center { text-align: center; }
+                .bold { font-weight: bold; }
+                
+                .footer { text-align: center; margin-top: 50px; font-size: 12px; color: #94A3B8; }
+              </style>
+            </head>
+            <body>
+              <div class="header">
+                <div class="title">Relatório Financeiro</div>
+                <div class="subtitle">Kairon Inteligência de Negócios • Gerado em ${dataAtual}</div>
+                <div style="margin-top: 10px; font-weight: bold; color: #D4AF37;">Visão: ${periodoNome}</div>
+              </div>
+
+              <div class="summary-container">
+                <div class="summary-card">
+                  <div class="summary-title">Receita Total</div>
+                  <div class="summary-value">${formatCurrency(summary.totalRevenue)}</div>
+                </div>
+                <div class="summary-card">
+                  <div class="summary-title">Despesas</div>
+                  <div class="summary-value expense-value">${formatCurrency(summary.totalExpenses)}</div>
+                </div>
+                <div class="summary-card profit">
+                  <div class="summary-title">Lucro Líquido</div>
+                  <div class="summary-value profit-value">${formatCurrency(summary.netProfit)}</div>
+                </div>
+              </div>
+
+              <h3>Histórico Detalhado (Últimos Meses)</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Período</th>
+                    <th class="text-right">Entradas</th>
+                    <th class="text-right">Saídas</th>
+                    <th class="text-right">Lucro Líquido</th>
+                    <th class="text-center">Margem</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${monthlyHistory.length > 0 ? monthlyHistory.map(row => `
+                    <tr>
+                      <td class="bold">${row.period}</td>
+                      <td class="text-right" style="color: #10B981;">${formatCurrency(row.income)}</td>
+                      <td class="text-right" style="color: #EF4444;">${formatCurrency(row.expense)}</td>
+                      <td class="text-right bold">${formatCurrency(row.profit)}</td>
+                      <td class="text-center bold" style="color: #D4AF37;">${row.margin}</td>
+                    </tr>
+                  `).join('') : '<tr><td colspan="5" class="text-center">Sem dados registrados nos últimos meses.</td></tr>'}
+                </tbody>
+              </table>
+
+              <div class="footer">
+                Documento gerado automaticamente pelo aplicativo Kairon.<br/>
+                Para dúvidas ou suporte, acesse o aplicativo.
+              </div>
+            </body>
+          </html>
+        `;
+
+        const { uri } = await Print.printToFileAsync({
+          html: htmlContent,
+          base64: false
+        });
+
+        await Sharing.shareAsync(uri, {
+            mimeType: 'application/pdf',
+            dialogTitle: 'Relatório Financeiro Kairon',
+            UTI: 'com.adobe.pdf'
+        });
+
+    } catch (error) {
+        console.error("Erro ao gerar PDF", error);
+        Alert.alert("Erro", "Não foi possível gerar o relatório.");
+    } finally {
+        setGeneratingPdf(false);
+    }
   };
 
   const renderPeriodSelector = () => (
@@ -195,7 +374,6 @@ export function FinanceDashboard() {
         const isActive = period === p;
         const labels = { day: 'Hoje', week: 'Semana', month: 'Mês', year: 'Ano' };
         
-        // 👇 AGORA BLOQUEIA TODOS, EXCETO O 'DAY'
         const isLocked = user?.plan !== 'PLUS' && p !== 'day';
 
         return (
@@ -284,7 +462,7 @@ export function FinanceDashboard() {
               <View>
                 <Text style={styles.headerTitle}>Painel Financeiro</Text>
                 <Text style={styles.headerSubtitle}>
-                    {user?.plan === 'PLUS' ? 'Visão PRO 🏆' : 'Plano Grátis'}
+                    {user?.plan === 'PLUS' ? 'Visão PLUS' : 'Plano Grátis'}
                 </Text>
               </View>
               
@@ -292,7 +470,6 @@ export function FinanceDashboard() {
                 {generatingPdf ? (
                     <ActivityIndicator size="small" color={theme.gold} />
                 ) : (
-                    /* 👇 ICONE DE PDF CORRIGIDO AQUI 👇 */
                     <MaterialCommunityIcons name="file-pdf-box" size={26} color={theme.gold} />
                 )}
               </TouchableOpacity>
@@ -335,6 +512,68 @@ export function FinanceDashboard() {
                         {renderStatCard('Atendimentos', summary.appointmentsCount.toString(), 'users', theme.gold)}
                         {renderStatCard('Ticket Médio', formatCurrency(summary.averageTicket), 'bar-chart-2', theme.goldLight)}
                     </View>
+                  </View>
+
+                  {/* TABELA DETALHADA DE HISTÓRICO */}
+                  <View style={styles.tableSection}>
+                      <View style={styles.chartHeader}>
+                          <Text style={styles.sectionTitle}>Histórico Detalhado</Text>
+                          <View style={styles.filterRow}>
+                              {/* 👇 BOTÕES ATUALIZADOS AQUI 👇 */}
+                              <TouchableOpacity 
+                                  style={[styles.filterBtn, tableFilter === 'WEEK' && styles.filterBtnActive]}
+                                  onPress={() => handleFilterChange('WEEK')}
+                              >
+                                  <Text style={[styles.filterBtnText, tableFilter === 'WEEK' && styles.filterBtnTextActive]}>Semanas</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity 
+                                  style={[styles.filterBtn, tableFilter === 'MONTH' && styles.filterBtnActive]}
+                                  onPress={() => handleFilterChange('MONTH')}
+                              >
+                                  <Text style={[styles.filterBtnText, tableFilter === 'MONTH' && styles.filterBtnTextActive]}>Meses</Text>
+                              </TouchableOpacity>
+                          </View>
+                      </View>
+
+                      <View style={styles.tableContainer}>
+                          <ScrollView horizontal showsHorizontalScrollIndicator={true} persistentScrollbar={true}>
+                              <View>
+                                  <View style={styles.tableHeaderRow}>
+                                      <Text style={[styles.tableCellHeader, { width: 140 }]}>Período</Text>
+                                      <Text style={[styles.tableCellHeader, { width: 110 }]}>Entradas</Text>
+                                      <Text style={[styles.tableCellHeader, { width: 110 }]}>Saídas</Text>
+                                      <Text style={[styles.tableCellHeader, { width: 120 }]}>Saldo Líquido</Text>
+                                      <Text style={[styles.tableCellHeader, { width: 90, textAlign: 'center' }]}>Margem</Text>
+                                      <Text style={[styles.tableCellHeader, { width: 100, textAlign: 'center' }]}>Ação</Text>
+                                  </View>
+
+                                  {monthlyHistory.map((row, index) => (
+                                      <View key={row.id} style={[styles.tableRow, index % 2 === 0 && styles.tableRowAlt]}>
+                                          <Text style={[styles.tableCell, { width: 140, fontWeight: '700', color: theme.textPrimary }]}>{row.period}</Text>
+                                          <Text style={[styles.tableCell, { width: 110, color: theme.success }]}>{formatCurrency(row.income)}</Text>
+                                          <Text style={[styles.tableCell, { width: 110, color: theme.danger }]}>{formatCurrency(row.expense)}</Text>
+                                          <Text style={[styles.tableCell, { width: 120, color: theme.gold, fontWeight: '700' }]}>{formatCurrency(row.profit)}</Text>
+                                          
+                                          <View style={{ width: 90, alignItems: 'center' }}>
+                                              <View style={styles.marginBadge}>
+                                                  <Text style={styles.marginBadgeText}>{row.margin}</Text>
+                                              </View>
+                                          </View>
+
+                                          <View style={{ width: 100, alignItems: 'center', justifyContent: 'center' }}>
+                                              <TouchableOpacity 
+                                                style={styles.actionButton}
+                                                onPress={() => handleOpenDetails(row.id, row.period)}
+                                              >
+                                                  <Text style={styles.actionButtonText}>Detalhes</Text>
+                                              </TouchableOpacity>
+                                          </View>
+                                      </View>
+                                  ))}
+                              </View>
+                          </ScrollView>
+                      </View>
+                      <Text style={styles.tableHelperText}>Deslize para os lados para ver a tabela completa</Text>
                   </View>
 
                   {/* GRÁFICO 1: EVOLUÇÃO */}
@@ -431,6 +670,66 @@ export function FinanceDashboard() {
           )}
         </ScrollView>
       </SafeAreaView>
+
+      {/* ==========================================
+          MODAL DE DETALHES (DRILL-DOWN)
+      ========================================== */}
+      <Modal
+          visible={detailsModalVisible}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setDetailsModalVisible(false)}
+      >
+          <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                  <View style={styles.modalHeader}>
+                      <Text style={styles.modalTitle}>Detalhes: {selectedMonthName}</Text>
+                      <TouchableOpacity onPress={() => setDetailsModalVisible(false)} style={{ padding: 4 }}>
+                          <Feather name="x" size={24} color={theme.textPrimary} />
+                      </TouchableOpacity>
+                  </View>
+
+                  {loadingDetails ? (
+                      <ActivityIndicator size="large" color={theme.gold} style={{ marginVertical: 40 }} />
+                  ) : (
+                      <ScrollView style={styles.detailsList} showsVerticalScrollIndicator={false}>
+                          {monthDetails.length === 0 ? (
+                              <View style={styles.emptyChart}>
+                                  <Feather name="inbox" size={40} color={theme.border} />
+                                  <Text style={styles.emptyDetailsText}>Nenhuma movimentação neste período.</Text>
+                              </View>
+                          ) : (
+                              monthDetails.map((item) => (
+                                  <View key={item.id} style={styles.detailItem}>
+                                      <View style={styles.detailItemLeft}>
+                                          <View style={[styles.detailIcon, { backgroundColor: item.type === 'revenue' ? theme.success + '15' : theme.danger + '15' }]}>
+                                              <Feather 
+                                                  name={item.type === 'revenue' ? 'arrow-down-left' : 'arrow-up-right'} 
+                                                  size={20} 
+                                                  color={item.type === 'revenue' ? theme.success : theme.danger} 
+                                              />
+                                          </View>
+                                          <View style={{ flex: 1 }}>
+                                              <Text style={styles.detailItemTitle} numberOfLines={1}>
+                                                  {item.categoryLabel} {item.reference && `• ${item.reference}`}
+                                              </Text>
+                                              <Text style={styles.detailItemDesc} numberOfLines={1}>
+                                                  {item.description}
+                                              </Text>
+                                          </View>
+                                      </View>
+                                      <Text style={[styles.detailItemValue, { color: item.type === 'revenue' ? theme.success : theme.danger }]}>
+                                          {item.type === 'revenue' ? '+ ' : '- '}{formatCurrency(item.amount)}
+                                      </Text>
+                                  </View>
+                              ))
+                          )}
+                      </ScrollView>
+                  )}
+              </View>
+          </View>
+      </Modal>
+
     </View>
   );
 }
@@ -509,4 +808,37 @@ const styles = StyleSheet.create({
   
   badge: { backgroundColor: 'rgba(255,255,255,0.05)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: theme.border },
   badgeText: { fontSize: 11, fontWeight: '800', color: theme.goldLight },
+
+  tableSection: { marginBottom: 24 },
+  filterRow: { flexDirection: 'row', backgroundColor: theme.cardBg, borderRadius: 8, padding: 4, borderWidth: 1, borderColor: theme.border },
+  filterBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
+  filterBtnActive: { backgroundColor: 'rgba(212, 175, 55, 0.15)' },
+  filterBtnText: { fontSize: 12, color: theme.secondary, fontWeight: '600' },
+  filterBtnTextActive: { color: theme.gold, fontWeight: '800' },
+  
+  tableContainer: { backgroundColor: theme.cardBg, borderRadius: 16, borderWidth: 1, borderColor: theme.border, overflow: 'hidden' },
+  tableHeaderRow: { flexDirection: 'row', backgroundColor: theme.tableHeader, paddingVertical: 14, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: theme.border },
+  tableCellHeader: { fontSize: 12, fontWeight: '700', color: theme.secondary, textTransform: 'uppercase' },
+  tableRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: theme.border },
+  tableRowAlt: { backgroundColor: 'rgba(255, 255, 255, 0.02)' },
+  tableCell: { fontSize: 14, color: theme.secondary },
+  marginBadge: { backgroundColor: 'rgba(212, 175, 55, 0.1)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  marginBadgeText: { color: theme.gold, fontSize: 12, fontWeight: '800' },
+  actionButton: { backgroundColor: 'rgba(56, 189, 248, 0.1)', borderWidth: 1, borderColor: 'rgba(56, 189, 248, 0.3)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
+  actionButtonText: { color: theme.info, fontSize: 12, fontWeight: '700' },
+  tableHelperText: { textAlign: 'center', fontSize: 11, color: theme.secondary, marginTop: 8, fontStyle: 'italic' },
+
+  // 👇 ESTILOS DO MODAL DE DETALHES 👇
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: theme.primary, borderTopLeftRadius: 32, borderTopRightRadius: 32, padding: 24, maxHeight: '85%', minHeight: '50%', borderWidth: 1, borderColor: theme.border },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: theme.border },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: theme.textPrimary },
+  detailsList: { paddingBottom: 20 },
+  emptyDetailsText: { marginTop: 12, color: theme.secondary, fontSize: 14, fontWeight: '600' },
+  detailItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: theme.cardBg, padding: 16, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: theme.border },
+  detailItemLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 12 },
+  detailIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+  detailItemTitle: { color: theme.textPrimary, fontSize: 15, fontWeight: '700', marginBottom: 4 },
+  detailItemDesc: { color: theme.secondary, fontSize: 13, fontWeight: '500' },
+  detailItemValue: { fontSize: 16, fontWeight: '800' },
 });

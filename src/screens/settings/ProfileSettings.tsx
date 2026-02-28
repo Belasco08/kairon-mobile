@@ -188,16 +188,24 @@ export function ProfileSettings() {
 
       if (!result.canceled && result.assets[0]) {
         setUploadingAvatar(true);
-        const formData = new FormData();
+        const imageAsset = result.assets[0];
+
+        // 1. Pega a extensão real do arquivo (ex: .jpg ou .png)
+        const uriParts = imageAsset.uri.split('.');
+        const fileType = uriParts[uriParts.length - 1];
         
-        const imageFile = {
-          uri: result.assets[0].uri,
-          type: "image/jpeg",
-          name: "avatar.jpg",
-        } as any;
+        // 2. Define o MIME type correto para o servidor não recusar (Erro 400)
+        const mimeType = fileType === 'png' ? 'image/png' : 'image/jpeg';
 
-        formData.append("avatar", imageFile);
+        // 3. Constrói o FormData perfeito para o React Native
+        const formData = new FormData();
+        formData.append("avatar", { // 👈 ATENÇÃO: Mudou de "avatar" para "file"
+          uri: Platform.OS === 'ios' ? imageAsset.uri.replace('file://', '') : imageAsset.uri,
+          name: `photo.${fileType}`,
+          type: mimeType,
+        } as any);
 
+        // 4. Manda para o serviço (Veja a observação abaixo sobre o transformRequest!)
         const updatedUserResponse = await authService.uploadAvatar(formData);
         
         await updateUser(updatedUserResponse);
@@ -205,9 +213,9 @@ export function ProfileSettings() {
         
         Alert.alert("Sucesso", "Foto atualizada!");
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error picking avatar:", error);
-      Alert.alert("Erro", "Falha ao enviar a imagem.");
+      Alert.alert("Erro", "Falha ao enviar a imagem. Tente novamente.");
     } finally {
       setUploadingAvatar(false);
     }

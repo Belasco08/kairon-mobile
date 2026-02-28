@@ -36,7 +36,7 @@ const theme = {
   success: '#10B981',
   danger: '#EF4444',
   warning: '#F59E0B',
-  info: '#38BDF8', // Azul claro para destaque no dark mode
+  info: '#38BDF8', 
   border: 'rgba(255, 255, 255, 0.05)',
 };
 
@@ -152,14 +152,36 @@ export function AppointmentList() {
   const getStatusColor = (status: AppointmentStatus) =>
     STATUS_COLORS[status] || STATUS_COLORS.CONFIRMED;
 
+  // 👇 NOVAS FUNÇÕES DE NAVEGAÇÃO DE SEMANA 👇
+  const handlePreviousWeek = () => {
+    setSelectedDate((prevDate) => addDays(prevDate, -7));
+  };
+
+  const handleNextWeek = () => {
+    setSelectedDate((prevDate) => addDays(prevDate, 7));
+  };
+
   // --- RENDERIZADORES ---
 
   const renderWeekCalendar = () => (
     <View style={styles.calendarContainer}>
       <View style={styles.monthHeader}>
-        <Text style={styles.monthText}>
-          {format(selectedDate, "MMMM, yyyy", { locale: ptBR })}
-        </Text>
+        
+        {/* 👇 NAVEGADOR DE MÊS/SEMANA COM SETAS 👇 */}
+        <View style={styles.monthSelector}>
+          <TouchableOpacity onPress={handlePreviousWeek} style={styles.arrowButton}>
+            <Feather name="chevron-left" size={24} color={theme.gold} />
+          </TouchableOpacity>
+          
+          <Text style={styles.monthText}>
+            {format(selectedDate, "MMMM, yyyy", { locale: ptBR })}
+          </Text>
+
+          <TouchableOpacity onPress={handleNextWeek} style={styles.arrowButton}>
+            <Feather name="chevron-right" size={24} color={theme.gold} />
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity onPress={() => setSelectedDate(new Date())}>
           <Text style={styles.todayLink}>Hoje</Text>
         </TouchableOpacity>
@@ -509,11 +531,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
+  monthSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  arrowButton: {
+    padding: 4,
+  },
   monthText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "800",
     color: theme.textPrimary,
     textTransform: "capitalize",
+    minWidth: 110,
+    textAlign: "center",
   },
   todayLink: {
     fontSize: 13,

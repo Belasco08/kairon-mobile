@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Client } from '@stomp/stompjs';
-// ❌ SockJS REMOVIDO: import SockJS from 'sockjs-client';
 import { useAuth } from './AuthContext';
-// Polyfill para React Native
 import 'text-encoding'; 
 
 interface WebSocketContextData {
@@ -18,41 +16,40 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!user?.companyId) return;
 
-    // 👇 MUDANÇA 1: Use 'ws://' e aponte para '/ws-native'
-    // Se seu backend roda na porta 8080, a URL completa é essa:
-    const socketUrl = 'ws://https://kairon-api.onrender.com/ws-native'; 
+    // 👇 CORREÇÃO 1: Usar wss:// (Seguro) e remover o https:// do meio
+    const socketUrl = 'wss://kairon-api.onrender.com/ws-native'; 
 
     const client = new Client({
-      // 👇 MUDANÇA 2: Use brokerURL em vez de webSocketFactory
       brokerURL: socketUrl,
 
-      // 👇 MUDANÇA 3: Configurações obrigatórias para React Native
       forceBinaryWSFrames: true, 
       appendMissingNULLonIncoming: true,
 
       reconnectDelay: 5000, // Tenta reconectar a cada 5s se cair
+      
+      // 👇 CORREÇÃO 2: Heartbeats! Impede que o Render feche a conexão por inatividade
+      heartbeatIncoming: 10000, // Espera um ping do servidor a cada 10s
+      heartbeatOutgoing: 10000, // Manda um ping pro servidor a cada 10s
       
       debug: (str) => {
         console.log('STOMP DEBUG:', str);
       },
       
       onConnect: () => {
-        console.log('🟢 WebSocket Conectado via Nativo!');
+        console.log('🟢 WebSocket Conectado via Nativo (WSS)!');
 
-        // Se inscreve no canal da empresa do usuário
         client.subscribe(`/topic/updates/${user.companyId}`, (message) => {
           if (message.body) {
             const data = JSON.parse(message.body);
             console.log('🔔 Notificação recebida:', data.type);
             
-            // Atualiza o estado global
             setLastUpdate({ type: data.type, timestamp: Date.now() });
           }
         });
       },
       
       onWebSocketClose: () => {
-        console.log('🔴 Conexão Fechada (Close Event)');
+        console.log('🔴 Conexão Fechada (Close Event). Tentando reconectar em breve...');
       },
       
       onStompError: (frame) => {

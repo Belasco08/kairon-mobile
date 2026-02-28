@@ -2,6 +2,8 @@ import React from 'react';
 import { Platform, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
+// 👇 IMPORT NOVO PARA A ÁREA SEGURA
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Home } from '../screens/dashboard/Home';
 import { AppointmentList } from '../screens/schedule/AppointmentList';
@@ -29,6 +31,9 @@ type BottomTabParamList = {
 const Tab = createBottomTabNavigator<BottomTabParamList>();
 
 export function BottomTabs() {
+  // 👇 PEGA O TAMANHO DOS BOTÕES DO SISTEMA (ANDROID/IOS)
+  const insets = useSafeAreaInsets();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -37,7 +42,7 @@ export function BottomTabs() {
         tabBarInactiveTintColor: theme.textInactive,
         
         tabBarLabelStyle: { 
-            fontSize: 10, // Aumentei um pouquinho já que agora tem mais espaço
+            fontSize: 10,
             fontWeight: '600',
             paddingBottom: Platform.OS === 'ios' ? 0 : 8,
         },
@@ -46,9 +51,13 @@ export function BottomTabs() {
             backgroundColor: theme.primary,
             borderTopWidth: 1,
             borderTopColor: theme.border,
-            height: Platform.OS === 'ios' ? 85 : 70, // Um pouquinho mais alto para respirar
+            
+            // 👇 A MÁGICA ACONTECE AQUI: Soma a altura base (70) com o tamanho do menu do celular
+            height: 70 + insets.bottom, 
             paddingTop: 10,
-            paddingBottom: Platform.OS === 'ios' ? 24 : 10,
+            // 👇 Dá o espaço exato embaixo para os botões do Android não cobrirem o texto
+            paddingBottom: Platform.OS === 'ios' ? insets.bottom : insets.bottom + 10,
+            
             elevation: 10,
             shadowColor: '#000',
             shadowOffset: { width: 0, height: -4 },
@@ -63,7 +72,7 @@ export function BottomTabs() {
             case 'Dashboard': iconName = 'grid'; break;
             case 'Schedule': iconName = 'calendar'; break;
             case 'Finance': iconName = 'dollar-sign'; break;
-            case 'Settings': iconName = 'menu'; break; // Mudei de 'settings' para 'menu'
+            case 'Settings': iconName = 'menu'; break;
           }
 
           return (

@@ -1,19 +1,25 @@
 import { api } from './api';
 
 /* =========================
-   TIPOS BASE
+   TIPOS BASE E INTERFACES
 ========================= */
 
 export type Period = 'day' | 'week' | 'month' | 'year';
 
-/* =========================
-   DASHBOARD
-========================= */
+// 👇 Nova Interface para a Tabela de Histórico Mensal
+export interface MonthlyHistoryData {
+  id: string;
+  period: string;
+  income: number;
+  expense: number;
+  profit: number;
+  margin: string;
+}
 
 export interface DashboardData {
   revenue: number;
-  expenses: number; // backend pode mandar 'expenses' ou 'totalExpenses'
-  balance: number;  // backend pode mandar 'balance' ou 'netProfit'
+  expenses: number;
+  balance: number;
   appointmentCount: number;
   averageTicket: number;
   dailyEvolution: Array<{
@@ -38,15 +44,14 @@ export interface DashboardData {
 
 export interface ApiFinancialRecord {
   id: string;
-  type: 'INCOME' | 'EXPENSE'; // O Java manda assim
-  category: string;           // Ex: VENDAS_PRODUTOS, REPOSICAO_ESTOQUE, SERVICO
+  type: 'INCOME' | 'EXPENSE'; 
+  category: string;           
   amount: number;
   description: string;
   referenceDate: string;
   status: string;
   paymentMethod: string;
   
-  // Opcionais dependendo da origem
   professional?: { name: string };
   clientName?: string;
   appointment?: { 
@@ -65,16 +70,17 @@ export interface FinancialRecord {
   amount: number;
   description: string;
   date: string;
-  category: 'appointment' | 'product' | 'service' | 'other'; // Usado para ícones
-  categoryLabel: string; // Texto bonito para exibir
+  category: 'appointment' | 'product' | 'service' | 'other'; 
+  categoryLabel: string; 
   status: 'pending' | 'completed' | 'cancelled';
-  reference?: string; // Nome do Cliente ou Profissional
+  reference?: string; 
 }
 
 export interface ExpenseChartData {
   category: string;
   total: number;
 }
+
 /* =========================
    DASHBOARD AUX
 ========================= */
@@ -96,7 +102,6 @@ export interface ComparisonData {
 const mapApiRecordToApp = (r: ApiFinancialRecord): FinancialRecord => {
   const isExpense = r.type === 'EXPENSE';
 
-  // 1. Define a Categoria Visual (Ícones)
   let category: FinancialRecord['category'] = 'other';
   let categoryLabel = 'Outros';
 
@@ -114,10 +119,8 @@ const mapApiRecordToApp = (r: ApiFinancialRecord): FinancialRecord => {
     categoryLabel = 'Agendamento';
   }
 
-  // 2. Define a Referência (Quem?)
   let reference = r.professional?.name || '';
   
-  // Se tiver cliente (via agendamento ou direto), prioriza mostrar o cliente
   if (r.clientName) reference = r.clientName;
   if (r.appointment?.client?.name) reference = r.appointment.client.name;
 
@@ -127,7 +130,7 @@ const mapApiRecordToApp = (r: ApiFinancialRecord): FinancialRecord => {
     amount: r.amount,
     date: r.referenceDate,
     type: isExpense ? 'expense' : 'revenue',
-    status: 'completed', // Assumimos concluído pois já está no financeiro
+    status: 'completed', 
     category: category,
     categoryLabel: categoryLabel,
     reference: reference,
@@ -135,19 +138,18 @@ const mapApiRecordToApp = (r: ApiFinancialRecord): FinancialRecord => {
 };
 
 /* =========================
-   SERVICE
+   SERVICE (MÉTODOS DA API)
 ========================= */
 
 export const financeService = {
-  /* ---------- DASHBOARD ---------- */
+  
+  /* ---------- DASHBOARD PRINCIPAL ---------- */
   getDashboard: async (params: { period: Period }): Promise<DashboardData> => {
-    // Tenta pegar os dados agregados. Se o backend ainda não tiver essa rota exata, 
-    // pode dar 404, mas focamos nos RECORDS agora.
     try {
         const response = await api.get('/financial/dashboard', { params });
         return response.data;
     } catch (error) {
-        console.warn("Dashboard endpoint failed, returning empty structure", error);
+        console.warn("Dashboard endpoint failed", error);
         return {
             revenue: 0, expenses: 0, balance: 0, appointmentCount: 0, averageTicket: 0,
             dailyEvolution: [], topServices: [], busyHours: []
@@ -155,14 +157,35 @@ export const financeService = {
     }
   },
 
-  /* ---------- REGISTROS (AQUI ESTÁ A MUDANÇA) ---------- */
+  /* ---------- NOVO: HISTÓRICO MENSAL (TABELA) ---------- */
+  getMonthlyHistory: async (): Promise<MonthlyHistoryData[]> => {
+    try {
+      const response = await api.get('/financial/monthly-history');
+      return response.data;
+    } catch (error) {
+      console.error("Erro ao buscar histórico mensal:", error);
+      return [];
+    }
+  },
+
+  /* 👇 ADICIONE ESTE NOVO MÉTODO 👇 */
+  getWeeklyHistory: async (): Promise<MonthlyHistoryData[]> => {
+    try {
+      const response = await api.get('/financial/weekly-history');
+      return response.data;
+    } catch (error) {
+      console.error("Erro ao buscar histórico semanal:", error);
+      return [];
+    }
+  },
+
+  /* ---------- REGISTROS / EXTRATO ---------- */
   getRecords: async (params?: {
     startDate?: string;
     endDate?: string;
     type?: string;
   }): Promise<FinancialRecord[]> => {
     try {
-      // ⚠️ Chama o novo endpoint que lista TUDO (Vendas + Serviços)
       const response = await api.get<ApiFinancialRecord[]>('/financial', { params });
 
       if (!response.data || !Array.isArray(response.data)) {
@@ -172,7 +195,6 @@ export const financeService = {
       return response.data.map(mapApiRecordToApp);
     } catch (error) {
       console.error("Erro ao buscar extrato financeiro:", error);
-      // Retorna vazio em vez de Mock para você saber se deu erro real
       return []; 
     }
   },
@@ -192,7 +214,7 @@ export const financeService = {
     return response.data;
   },
 
-  /* ---------- CHART ---------- */
+  /* ---------- CHARTS ---------- */
   getRevenueChart: async (
     params: { period: Period }
   ): Promise<RevenueData> => {
@@ -201,6 +223,15 @@ export const financeService = {
       return response.data;
     } catch {
       return { labels: [], values: [] };
+    }
+  },
+
+  getExpensesChart: async (params: { period: Period }): Promise<ExpenseChartData[]> => {
+    try {
+      const response = await api.get('/financial/expenses-chart', { params });
+      return response.data;
+    } catch {
+      return [];
     }
   },
 
@@ -216,12 +247,4 @@ export const financeService = {
     }
   },
 
-  getExpensesChart: async (params: { period: Period }): Promise<ExpenseChartData[]> => {
-    try {
-      const response = await api.get('/financial/expenses-chart', { params });
-      return response.data;
-    } catch {
-      return [];
-    }
-},
 };

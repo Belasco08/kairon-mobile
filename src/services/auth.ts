@@ -155,21 +155,31 @@ export const authService = {
   },
 
   uploadAvatar: async (formData: FormData): Promise<AuthUser> => {
-  if (USE_MOCK) {
-    return mockAuthResponse('mock@email.com').user;
-  }
+    
+    // 1. Pegamos a URL base e o Token de Autenticação que o Axios já usa
+    const baseURL = api.defaults.baseURL || 'https://kairon-api.onrender.com';
+    const token = api.defaults.headers.common['Authorization'] || api.defaults.headers['Authorization'];
 
-  const response = await api.post<AuthUser>(
-    '/users/me/avatar',
-    formData,
-    {
+    // 2. Usamos o 'fetch' nativo do celular (Ele é 100% a prova de falhas com FormData)
+    const response = await fetch(`${baseURL}/users/me/avatar`, {
+      method: 'POST',
       headers: {
-        'Content-Type': 'multipart/form-data',
+        // ⚠️ ATENÇÃO: Nunca coloque 'Content-Type': 'multipart/form-data' no fetch. 
+        // Ele faz isso e calcula o 'boundary' sozinho perfeitamente!
+        'Authorization': token as string,
+        'Accept': 'application/json'
       },
+      body: formData
+    });
+
+    if (!response.ok) {
+      // Se der erro, tenta ler a mensagem que o Java mandou
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Erro HTTP ${response.status} no upload`);
     }
-  );
-  return response.data;
-},
+
+    return await response.json();
+  },
 
 
   refreshToken: async (
