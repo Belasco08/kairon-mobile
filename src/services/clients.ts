@@ -53,4 +53,11 @@ export const clientService = {
     }
     return response.data;
   },
+  // Adicione junto com os outros métodos de clientService
+  getMissingClients: async (daysAway: number = 30) => {
+    // Passamos o daysAway como parâmetro, mas o padrão é 30
+    const response = await api.get(`/clients/missing?daysAway=${daysAway}`);
+    // O Spring Boot com paginação devolve os dados dentro de 'content'
+    return response.data.content || response.data; 
+  },
 };

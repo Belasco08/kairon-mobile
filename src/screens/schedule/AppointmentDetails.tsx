@@ -11,10 +11,11 @@ import {
   SafeAreaView,
   StyleSheet,
   StatusBar,
+  Modal,
 } from "react-native";
 import { useRoute, RouteProp, useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { Feather } from "@expo/vector-icons";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { appointmentService } from "../../services/appointments";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
@@ -79,6 +80,7 @@ interface Appointment {
   actualPrice?: number;
   actualDuration?: number;
   notes?: string;
+  isPaid?: boolean; // Adicionado para o fiado
 
   client?: {
     id: string;
@@ -106,6 +108,10 @@ export function AppointmentDetails() {
 
   const [loading, setLoading] = useState(true);
   const [appointment, setAppointment] = useState<Appointment | null>(null);
+  
+  // 👇 NOVO ESTADO PARA O MODAL DE PAGAMENTO
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
 
   useEffect(() => {
     loadAppointment();
@@ -124,13 +130,19 @@ export function AppointmentDetails() {
     }
   };
 
-  const handleStatusChange = async (newStatus: AppointmentStatus) => {
+  // 👇 ATUALIZADO: Agora aceita o parâmetro isPaid
+  const handleStatusChange = async (newStatus: AppointmentStatus, isPaid: boolean = true) => {
     try {
-      await appointmentService.updateStatus(appointmentId, newStatus);
-      setAppointment((prev) => (prev ? { ...prev, status: newStatus } : null));
-      Alert.alert("Sucesso", "Status atualizado!");
-    } catch {
+      setIsCompleting(true);
+      // Enviamos o isPaid junto com o status
+      await appointmentService.updateStatus(appointmentId, newStatus, undefined, isPaid);
+      setAppointment((prev) => (prev ? { ...prev, status: newStatus, isPaid } : null));
+      setShowPaymentModal(false);
+      Alert.alert("Sucesso", newStatus === "COMPLETED" ? (isPaid ? "Atendimento finalizado!" : "Atendimento pendurado na conta!") : "Status atualizado!");
+    } catch (error) {
       Alert.alert("Erro", "Não foi possível atualizar o status");
+    } finally {
+      setIsCompleting(false);
     }
   };
 
@@ -159,7 +171,6 @@ export function AppointmentDetails() {
     Linking.openURL(`whatsapp://send?phone=${fullPhone}`);
   };
 
-  // 👇 NOVA FUNÇÃO: Enviar mensagem de Cancelamento
   const handleMessageClientCancel = async () => {
     const phone = getClientPhone();
     if (!phone) return;
@@ -186,7 +197,6 @@ export function AppointmentDetails() {
     }
   };
 
-
   const handleCancel = () => {
     Alert.alert(
       "Cancelar Agendamento",
@@ -199,7 +209,6 @@ export function AppointmentDetails() {
           onPress: async () => {
             await handleStatusChange("CANCELLED");
             
-            // Pergunta se deseja avisar o cliente via WhatsApp
             if (getClientPhone()) {
                Alert.alert(
                  "Avisar Cliente",
@@ -216,18 +225,13 @@ export function AppointmentDetails() {
     );
   };
 
+  // 👇 NOVA LÓGICA DE FINALIZAÇÃO
   const handleComplete = () => {
-    Alert.alert(
-      "Finalizar Atendimento",
-      "Deseja marcar este atendimento como concluído?",
-      [
-        { text: "Ainda não", style: "cancel" },
-        {
-          text: "Sim, concluir",
-          onPress: () => handleStatusChange("COMPLETED"),
-        },
-      ],
-    );
+    setShowPaymentModal(true);
+  };
+
+  const confirmComplete = (isPaid: boolean) => {
+      handleStatusChange("COMPLETED", isPaid);
   };
 
   const getStatusVariant = (
@@ -287,7 +291,6 @@ export function AppointmentDetails() {
     );
   }
 
-  // --- SAFE PARSING ---
   let startTimeDate = new Date();
   try {
     startTimeDate = parseISO(appointment.startTime);
@@ -328,7 +331,6 @@ export function AppointmentDetails() {
           </View>
         </View>
 
-        {/* Botão Editar */}
         <TouchableOpacity
           onPress={() =>
             navigation.navigate("EditAppointment", {
@@ -352,7 +354,7 @@ export function AppointmentDetails() {
         contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* INFO PRINCIPAL (Data e Profissional) */}
+        {/* INFO PRINCIPAL */}
         <View style={styles.card}>
           <View style={styles.infoRow}>
             <View style={styles.iconBox}>
@@ -498,6 +500,66 @@ export function AppointmentDetails() {
           </View>
         ) : null}
       </ScrollView>
+
+      {/* 👇 MODAL DE PAGAMENTO / FIADO 👇 */}
+      <Modal
+        visible={showPaymentModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowPaymentModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            
+            <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Finalizar Atendimento</Text>
+                <TouchableOpacity onPress={() => setShowPaymentModal(false)}>
+                    <Feather name="x" size={24} color={theme.textPrimary} />
+                </TouchableOpacity>
+            </View>
+
+            <Text style={styles.modalSubtitle}>
+              Como o cliente {getClientName()} pagou {formatCurrency(appointment.totalPrice)}?
+            </Text>
+
+            <TouchableOpacity
+                style={[styles.paymentOptionBtn, { borderColor: theme.success, backgroundColor: 'rgba(16, 185, 129, 0.1)' }]}
+                onPress={() => confirmComplete(true)}
+                disabled={isCompleting}
+            >
+                <View style={[styles.paymentIconBg, { backgroundColor: theme.success }]}>
+                    <Feather name="check-circle" size={24} color="#FFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                    <Text style={[styles.paymentOptionTitle, { color: theme.success }]}>Pago na Hora</Text>
+                    <Text style={styles.paymentOptionDesc}>Adiciona o valor ao fluxo de caixa hoje.</Text>
+                </View>
+                <Feather name="chevron-right" size={20} color={theme.success} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+                style={[styles.paymentOptionBtn, { borderColor: theme.danger, backgroundColor: 'rgba(239, 68, 68, 0.1)', marginTop: 16 }]}
+                onPress={() => confirmComplete(false)}
+                disabled={isCompleting}
+            >
+                <View style={[styles.paymentIconBg, { backgroundColor: theme.danger }]}>
+                    <MaterialCommunityIcons name="notebook-edit-outline" size={24} color="#FFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                    <Text style={[styles.paymentOptionTitle, { color: theme.danger }]}>Pendurar na Conta</Text>
+                    <Text style={styles.paymentOptionDesc}>Soma a dívida no perfil do cliente para cobrar depois.</Text>
+                </View>
+                <Feather name="chevron-right" size={20} color={theme.danger} />
+            </TouchableOpacity>
+
+            {isCompleting && (
+                <ActivityIndicator size="large" color={theme.gold} style={{ marginTop: 24 }} />
+            )}
+
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -667,5 +729,62 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: theme.textSecondary,
     lineHeight: 22,
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: theme.cardBg,
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: theme.textPrimary,
+  },
+  modalSubtitle: {
+    fontSize: 15,
+    color: theme.textSecondary,
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  paymentOptionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 2,
+    gap: 16,
+  },
+  paymentIconBg: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  paymentOptionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  paymentOptionDesc: {
+    fontSize: 13,
+    color: theme.textSecondary,
+    lineHeight: 18,
   },
 });

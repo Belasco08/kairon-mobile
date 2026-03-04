@@ -11,13 +11,15 @@ import {
   StyleSheet,
   SafeAreaView,
   StatusBar,
-  TouchableOpacity
+  TouchableOpacity,
+  Linking
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { Feather } from '@expo/vector-icons'; 
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons'; 
 
 import { useAuth } from '../../contexts/AuthContext';
 import { professionalService } from '../../services/professionals';
+import { api } from '../../services/api'; // 👈 Importado para as rotas financeiras
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 
@@ -71,6 +73,16 @@ export function EditProfessional() {
   
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
+  // 👇 ESTADOS DO ACERTO DE CONTAS
+  const [settlement, setSettlement] = useState<any>(null);
+  const [loadingSettlement, setLoadingSettlement] = useState(false);
+
+  // 👇 ESTADOS DO MODAL DE VALE
+  const [showAdvanceModal, setShowAdvanceModal] = useState(false);
+  const [advanceAmount, setAdvanceAmount] = useState('');
+  const [advanceDesc, setAdvanceDesc] = useState('');
+  const [savingAdvance, setSavingAdvance] = useState(false);
+
   const [form, setForm] = useState<ProfessionalForm>({
     name: '',
     email: '',
@@ -90,6 +102,9 @@ export function EditProfessional() {
   useEffect(() => {
     if (professionalId) {
         loadProfessional();
+        if (user?.role === 'OWNER') {
+           loadSettlement();
+        }
     } else {
         Alert.alert("Erro", "ID do profissional não encontrado.");
         navigation.goBack();
@@ -121,6 +136,18 @@ export function EditProfessional() {
     }
   };
 
+  const loadSettlement = async () => {
+    try {
+      setLoadingSettlement(true);
+      const response = await api.get(`/financial/settlement/${professionalId}`);
+      setSettlement(response.data);
+    } catch (error) {
+      console.log("Erro ao carregar acerto:", error);
+    } finally {
+      setLoadingSettlement(false);
+    }
+  };
+
   /* =========================
       HANDLERS
   ========================= */
@@ -135,7 +162,6 @@ export function EditProfessional() {
   const validateForm = (): boolean => {
     const newErrors: Partial<Record<keyof ProfessionalForm, string>> = {};
 
-    // O "?" (Optional Chaining) evita o erro fantasma caso a string seja nula
     if (!form.name?.trim()) newErrors.name = 'Nome é obrigatório';
     
     if (!form.email?.trim()) {
@@ -166,13 +192,89 @@ export function EditProfessional() {
 
     setErrors(newErrors);
     
-    // Se tiver erro, avisa na hora na tela
     if (Object.keys(newErrors).length > 0) {
         Alert.alert("Atenção", "Verifique os campos obrigatórios antes de salvar.");
         return false;
     }
     
     return true;
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+  };
+
+  // 👇 FUNÇÃO PARA LANÇAR O VALE
+  const handleSaveAdvance = async () => {
+    if (!advanceAmount) {
+      Alert.alert("Atenção", "Digite um valor para o vale.");
+      return;
+    }
+
+    const cleanAmount = Number(advanceAmount.replace(',', '.'));
+    if (isNaN(cleanAmount) || cleanAmount <= 0) {
+      Alert.alert("Atenção", "Valor inválido.");
+      return;
+    }
+
+    try {
+      setSavingAdvance(true);
+      // Chama a nova rota que criamos no Java
+      await api.post(`/financial/settlement/${professionalId}/advance?amount=${cleanAmount}&description=${encodeURIComponent(advanceDesc)}`);
+      
+      Alert.alert("Sucesso", "Vale registrado com sucesso!");
+      setShowAdvanceModal(false);
+      setAdvanceAmount('');
+      setAdvanceDesc('');
+      
+      // Recarrega o acerto de contas para a matemática atualizar na hora!
+      loadSettlement(); 
+    } catch (error) {
+      Alert.alert("Erro", "Não foi possível lançar o vale.");
+    } finally {
+      setSavingAdvance(false);
+    }
+  };
+
+  // 👇 FUNÇÃO PARA PAGAR E ENVIAR WHATSAPP
+  const handlePaySettlement = () => {
+    if (!settlement || settlement.netPayout <= 0) {
+        Alert.alert("Aviso", "Não há saldo pendente para pagar a este profissional.");
+        return;
+    }
+
+    Alert.alert(
+      "Confirmar Acerto",
+      `Deseja quitar o valor de ${formatCurrency(settlement.netPayout)} e zerar as pendências de ${form.name.split(' ')[0]}?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Sim, Pagar", 
+          onPress: async () => {
+            try {
+              setSaving(true);
+              await api.post(`/financial/settlement/${professionalId}/pay`);
+              
+              if (form.phone) {
+                 const phone = form.phone.replace(/\D/g, "");
+                 const fullPhone = phone.startsWith("55") ? phone : `55${phone}`;
+                 
+                 const msg = `Fala ${form.name.split(' ')[0]}, tudo bem?\n\nPassando para enviar o recibo do seu acerto semanal! ✂️\n\n💰 *Comissões:* ${formatCurrency(settlement.totalCommission)}\n📉 *Vales/Consumo:* - ${formatCurrency(settlement.totalAdvances)}\n✅ *Total Pago:* ${formatCurrency(settlement.netPayout)}\n\nO valor já foi transferido. Bom descanso e vamos pra cima! 🚀`;
+                 
+                 Linking.openURL(`whatsapp://send?phone=${fullPhone}&text=${encodeURIComponent(msg)}`);
+              }
+
+              Alert.alert("Sucesso", "Acerto realizado e registrado no sistema!");
+              loadSettlement(); 
+            } catch (error) {
+              Alert.alert("Erro", "Falha ao registrar o pagamento.");
+            } finally {
+              setSaving(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   /* =========================
@@ -229,7 +331,7 @@ export function EditProfessional() {
           style: 'destructive',
           onPress: async () => {
             try {
-              setSaving(true); // Usando setSaving para desativar os botões enquanto exclui
+              setSaving(true); 
               await professionalService.delete(professionalId);
               navigation.goBack();
             } catch (error) {
@@ -274,9 +376,72 @@ export function EditProfessional() {
         <ScrollView 
             contentContainerStyle={{ padding: 20, paddingBottom: 60 }} 
             showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled" // 👇 ISSO AQUI RESOLVE O BOTÃO "TRAVADO"
+            keyboardShouldPersistTaps="handled" 
         >
           
+          {/* ========================================================= */}
+          {/* 👇 ACERTO DE CONTAS (SÓ APARECE PARA O DONO) 👇 */}
+          {/* ========================================================= */}
+          {user?.role === 'OWNER' && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                  <MaterialCommunityIcons name="cash-register" size={18} color={theme.success} />
+                  <Text style={[styles.sectionTitle, { color: theme.success }]}>Acerto de Contas</Text>
+              </View>
+
+              <View style={[styles.card, { borderColor: 'rgba(16, 185, 129, 0.3)', backgroundColor: 'rgba(16, 185, 129, 0.05)' }]}>
+                {loadingSettlement ? (
+                   <ActivityIndicator size="small" color={theme.success} />
+                ) : (
+                   <View style={{ gap: 12 }}>
+                      <View style={styles.settlementRow}>
+                         <Text style={styles.settlementLabel}>Comissões a Receber</Text>
+                         <Text style={[styles.settlementValue, { color: theme.goldLight }]}>
+                            {formatCurrency(settlement?.totalCommission || 0)}
+                         </Text>
+                      </View>
+                      <View style={styles.settlementRow}>
+                         <Text style={styles.settlementLabel}>Vales / Consumo (Desconto)</Text>
+                         <Text style={[styles.settlementValue, { color: theme.danger }]}>
+                            - {formatCurrency(settlement?.totalAdvances || 0)}
+                         </Text>
+                      </View>
+                      
+                      <View style={styles.dividerInternal} />
+                      
+                      <View style={styles.settlementRow}>
+                         <Text style={styles.settlementTotalLabel}>Total a Pagar</Text>
+                         <Text style={styles.settlementTotalValue}>
+                            {formatCurrency(settlement?.netPayout || 0)}
+                         </Text>
+                      </View>
+
+                      {/* 👇 NOVO BOTÃO DE VALE 👇 */}
+                      <TouchableOpacity 
+                         style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, marginTop: 4, marginBottom: 8 }}
+                         onPress={() => setShowAdvanceModal(true)}
+                      >
+                         <Feather name="minus-circle" size={16} color={theme.danger} style={{ marginRight: 6 }} />
+                         <Text style={{ color: theme.danger, fontWeight: '700', fontSize: 14 }}>Lançar Vale / Consumo</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity 
+                         style={[
+                           styles.payButton, 
+                           (!settlement || settlement.netPayout <= 0) && { opacity: 0.5 }
+                         ]}
+                         onPress={handlePaySettlement}
+                         disabled={!settlement || settlement.netPayout <= 0 || saving}
+                      >
+                         <MaterialCommunityIcons name="whatsapp" size={20} color="#FFF" />
+                         <Text style={styles.payButtonText}>Pagar e Enviar Recibo</Text>
+                      </TouchableOpacity>
+                   </View>
+                )}
+              </View>
+            </View>
+          )}
+
           {/* === DADOS PESSOAIS === */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
@@ -415,7 +580,6 @@ export function EditProfessional() {
 
           {/* === AÇÕES === */}
           <View style={{ gap: 14, marginTop: 10 }}>
-            {/* 👇 Botão agora no Tema Gold */}
             <Button
               title={saving ? "Salvando..." : "Salvar Alterações"}
               onPress={handleSubmit}
@@ -439,6 +603,49 @@ export function EditProfessional() {
 
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* 👇 MODAL DE VALE 👇 */}
+      {showAdvanceModal && (
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', padding: 20, zIndex: 999 }}>
+          <View style={{ backgroundColor: theme.cardBg, padding: 24, borderRadius: 20, borderWidth: 1, borderColor: theme.border }}>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: theme.textPrimary, marginBottom: 16 }}>Lançar Vale / Consumo</Text>
+            
+            <View style={{ gap: 12 }}>
+              <Input
+                label="Valor (R$)"
+                placeholder="Ex: 15,00"
+                keyboardType="numeric"
+                value={advanceAmount}
+                onChangeText={setAdvanceAmount}
+              />
+              <Input
+                label="Descrição (Opcional)"
+                placeholder="Ex: Coca-cola, Adiantamento..."
+                value={advanceDesc}
+                onChangeText={setAdvanceDesc}
+              />
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 24 }}>
+              <Button
+                title="Cancelar"
+                variant="outline"
+                style={{ flex: 1, borderColor: 'rgba(255,255,255,0.1)' }}
+                textStyle={{ color: theme.textSecondary }}
+                onPress={() => setShowAdvanceModal(false)}
+                disabled={savingAdvance}
+              />
+              <Button
+                title={savingAdvance ? "Salvando..." : "Lançar"}
+                style={{ flex: 1, backgroundColor: theme.danger }}
+                textStyle={{ color: '#FFF' }}
+                onPress={handleSaveAdvance}
+                disabled={savingAdvance}
+              />
+            </View>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -512,6 +719,48 @@ const styles = StyleSheet.create({
     dividerInternal: {
         height: 1,
         backgroundColor: 'rgba(255,255,255,0.05)',
-        marginVertical: 8
+        marginVertical: 12
+    },
+
+    // 👇 ESTILOS DO ACERTO DE CONTAS
+    settlementRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    settlementLabel: {
+        fontSize: 14,
+        color: theme.textSecondary,
+        fontWeight: '600',
+    },
+    settlementValue: {
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    settlementTotalLabel: {
+        fontSize: 16,
+        color: theme.textPrimary,
+        fontWeight: '800',
+        textTransform: 'uppercase',
+    },
+    settlementTotalValue: {
+        fontSize: 24,
+        color: theme.success,
+        fontWeight: '900',
+    },
+    payButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.success,
+        paddingVertical: 14,
+        borderRadius: 12,
+        marginTop: 8,
+        gap: 8,
+    },
+    payButtonText: {
+        color: '#FFF',
+        fontSize: 15,
+        fontWeight: '800',
     }
 });

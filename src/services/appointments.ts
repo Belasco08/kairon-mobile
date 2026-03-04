@@ -125,14 +125,15 @@ export const appointmentService = {
   // Atualização específica de status (Rota dedicada do Backend)
   updateStatus: async (
     id: string,
-    status: AppointmentStatus,
-    reason?: string
+    status: string,
+    reason?: string,
+    isPaid: boolean = true // 👈 Adicionado o parâmetro com default true
   ) => {
-    const payload = { 
-      status: status, 
-      reason: reason 
-    };
-    const response = await api.put(`/appointments/${id}/status`, payload);
+    const response = await api.patch(`/appointments/${id}/status`, {
+      status,
+      reason,
+      isPaid, // 👈 Enviando pro backend
+    });
     return response.data;
   },
 

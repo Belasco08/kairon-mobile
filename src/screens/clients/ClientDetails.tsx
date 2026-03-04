@@ -13,7 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { Feather, MaterialIcons } from '@expo/vector-icons';
+import { Feather, MaterialIcons, MaterialCommunityIcons } from '@expo/vector-icons';
 import type { AppNavigation } from '../../@types/navigation';
 
 import { clientService } from '../../services/clients';
@@ -31,7 +31,7 @@ const theme = {
   textPrimary: '#FFFFFF',
   textSecondary: '#94A3B8',
   success: '#10B981',
-  danger: '#EF4444',       // Vermelho para cancelados
+  danger: '#EF4444',       // Vermelho para cancelados / Dívidas
   border: 'rgba(255, 255, 255, 0.05)',
 };
 
@@ -78,12 +78,7 @@ export function ClientDetails() {
   const loadAppointments = async () => {
     try {
       setAppointmentsLoading(true);
-      
-      // 👇 MUDANÇA AQUI: Chamando a rota específica do cliente
-      // Caso a listByClient não exista no seu serviço, crie-a como te mostrei.
-      // Se você preferir usar o list, tem que garantir que a query ?clientId= tá funcionando no Backend
       const data = await appointmentService.listByClient(clientId); 
-      
       setAppointments(Array.isArray(data) ? data : []);
     } catch (error) {
       console.log(error);
@@ -102,11 +97,41 @@ export function ClientDetails() {
     Linking.openURL(`whatsapp://send?phone=${fullPhone}&text=Olá ${client.name}!`);
   };
 
+  // 👇 NOVA FUNÇÃO: Cobrar Cliente (Fiado)
+  const handleChargeWhatsApp = () => {
+    if (!client?.phone) {
+        Alert.alert("Aviso", "Este cliente não possui telefone cadastrado para cobrança.");
+        return;
+    }
+    const phone = client.phone.replace(/\D/g, "");
+    const fullPhone = phone.startsWith("55") ? phone : `55${phone}`;
+    
+    // Mensagem educada de cobrança
+    const message = `Fala ${client.name.split(' ')[0]}, tudo bem? Passando pra deixar o resumo da sua conta aqui na barbearia, que ficou em ${formatCurrency(client.debtBalance)}. \n\nQuando puder realizar o acerto, me avisa! 👊\n\nChave PIX: (Coloque sua chave aqui)`;
+    
+    Linking.openURL(`whatsapp://send?phone=${fullPhone}&text=${encodeURIComponent(message)}`);
+  };
+
+  // 👇 NOVA FUNÇÃO: Quitar Dívida
+  const handleSettleDebt = () => {
+    Alert.alert(
+      "Quitar Conta",
+      `Deseja confirmar o pagamento de ${formatCurrency(client.debtBalance)} e zerar a conta deste cliente?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Sim, Quitar", onPress: () => {
+            // Aqui você vai chamar a API para zerar a dívida futuramente
+            Alert.alert("Sucesso", "A conta do cliente foi quitada!");
+            setClient({...client, debtBalance: 0}); // Zera na tela para dar feedback imediato
+        }}
+      ]
+    );
+  };
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
   };
 
-  // Função para traduzir o status corretamente e pegar a cor certa
   const getStatusInfo = (status: string) => {
     switch (status) {
       case 'COMPLETED': return { text: 'Concluído', color: theme.success };
@@ -168,6 +193,41 @@ export function ClientDetails() {
           </View>
         </View>
 
+        {/* ========================================================= */}
+        {/* 👇 CARD DE DÍVIDA (FIADO) - SÓ APARECE SE DEVER ALGO 👇 */}
+        {/* ========================================================= */}
+        {client.debtBalance > 0 && (
+          <View style={styles.debtCard}>
+             <View style={styles.debtHeader}>
+                <View style={styles.debtIconBg}>
+                   <MaterialCommunityIcons name="notebook-edit-outline" size={24} color={theme.danger} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                   <Text style={styles.debtLabel}>Conta em Aberto (Fiado)</Text>
+                   <Text style={styles.debtValue}>{formatCurrency(client.debtBalance)}</Text>
+                </View>
+             </View>
+
+             <View style={styles.debtActions}>
+                <TouchableOpacity 
+                  style={[styles.debtBtn, { backgroundColor: 'rgba(239, 68, 68, 0.15)', borderColor: 'rgba(239, 68, 68, 0.3)' }]}
+                  onPress={handleChargeWhatsApp}
+                >
+                   <MaterialCommunityIcons name="whatsapp" size={18} color={theme.danger} />
+                   <Text style={[styles.debtBtnText, { color: theme.danger }]}>Cobrar Cliente</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.debtBtn, { backgroundColor: theme.success, borderColor: theme.success }]}
+                  onPress={handleSettleDebt}
+                >
+                   <Feather name="check" size={18} color="#FFF" />
+                   <Text style={[styles.debtBtnText, { color: "#FFF" }]}>Quitar Conta</Text>
+                </TouchableOpacity>
+             </View>
+          </View>
+        )}
+
         <View style={styles.statsRow}>
             <View style={styles.statBox}>
                 <Feather name="scissors" size={20} color={theme.gold} style={{marginBottom: 8}} />
@@ -177,7 +237,7 @@ export function ClientDetails() {
             <View style={styles.statBox}>
                 <Feather name="dollar-sign" size={20} color={theme.success} style={{marginBottom: 8}} />
                 <Text style={styles.statValue}>{formatCurrency(client.totalSpent)}</Text>
-                <Text style={styles.statLabel}>Total Gasto</Text>
+                <Text style={styles.statLabel}>Total Pago</Text>
             </View>
         </View>
 
@@ -365,6 +425,60 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
+
+  // 👇 ESTILOS DO CARD DE DÍVIDA 👇
+  debtCard: {
+    backgroundColor: 'rgba(239, 68, 68, 0.05)',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+    marginBottom: 24,
+  },
+  debtHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  debtIconBg: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(239, 68, 68, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  debtLabel: {
+    fontSize: 13,
+    color: theme.danger,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  debtValue: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: theme.textPrimary,
+    marginTop: 2,
+  },
+  debtActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  debtBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
+  },
+  debtBtnText: {
+    fontWeight: '800',
+    fontSize: 13,
+  },
+
   statsRow: {
     flexDirection: 'row',
     gap: 16,

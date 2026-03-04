@@ -52,7 +52,7 @@ const theme = {
 // ==============================================================================
 const API_URL = "https://kairon-api.onrender.com";
 
-// --- GAMIFICATION: NÍVEIS DE VENDAS ---
+// --- GAMIFICATION: NÍVEIS DE VENDAS (OWNER) ---
 const SALES_GOALS = [
   { limit: 10000, label: "Bronze", color: "#CD7F32", nextLabel: "Prata" },
   { limit: 50000, label: "Prata", color: "#94A3B8", nextLabel: "Ouro" },
@@ -60,7 +60,6 @@ const SALES_GOALS = [
   { limit: 1000000, label: "Diamante", color: "#38BDF8", nextLabel: "Lenda" }, 
 ];
 
-// 👇 ADICIONADO: lastServiceName e lastServiceDate
 interface Appointment {
   id: string;
   startTime: string;
@@ -118,7 +117,6 @@ Te aguardamos na *{EMPRESA}*! 👊`;
   return msg;
 };
 
-// 👇 NOVA FUNÇÃO PARA MENSAGEM DE CANCELAMENTO
 const buildWhatsAppCancelMessage = (
   appointment: Appointment,
   company: any
@@ -171,7 +169,7 @@ export function Home() {
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([]);
   const [localCompany, setLocalCompany] = useState<any>(null);
 
-  // 👇 ESTADOS DO MODAL DE GAMIFICAÇÃO
+  // ESTADOS DO MODAL DE GAMIFICAÇÃO
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [achievedGoal, setAchievedGoal] = useState<any>(null);
 
@@ -187,7 +185,6 @@ export function Home() {
   };
 
   const checkGamificationGoal = async (revenue: number) => {
-      // 1. Encontra a maior meta que o usuário já ultrapassou
       let highestGoalAchieved = null;
       for (let i = SALES_GOALS.length - 1; i >= 0; i--) {
           if (revenue >= SALES_GOALS[i].limit) {
@@ -197,20 +194,14 @@ export function Home() {
       }
 
       if (highestGoalAchieved) {
-          // 2. Cria uma chave única por Mês e por Nível para salvar no celular
           const currentMonthYear = format(new Date(), "MM_yyyy");
           const storageKey = `@kairon_goal_${highestGoalAchieved.label}_${currentMonthYear}`;
 
           try {
-              // 3. Verifica no celular se ele JÁ VIU essa meta nesse mês
               const hasSeen = await AsyncStorage.getItem(storageKey);
-              
               if (!hasSeen) {
-                  // Se ele não viu, prepara o modal para exibir
                   setAchievedGoal(highestGoalAchieved);
                   setShowGoalModal(true);
-                  
-                  // Salva no celular que ele viu, para nunca mais mostrar esse nível neste mês!
                   await AsyncStorage.setItem(storageKey, 'true');
               }
           } catch (e) {
@@ -235,11 +226,9 @@ export function Home() {
       let financeData = null;
       if (user?.role === "OWNER" || user?.role === "PROFESSIONAL") {
         try {
-          // Busca o faturamento do mês atual
           financeData = await financeService.getDashboard({ period: "month" });
           
-          // LÓGICA PERSISTENTE DE VERIFICAÇÃO DE META
-          if (financeData && financeData.revenue) {
+          if (financeData && financeData.revenue && user?.role === "OWNER") {
              await checkGamificationGoal(financeData.revenue);
           }
         } catch (error: any) { }
@@ -285,7 +274,6 @@ export function Home() {
     }
   };
 
-  // 👇 ATUALIZADO: ENVIA WHATSAPP AO CANCELAR
   const handleCancelAppointment = (appointment: Appointment) => {
     Alert.alert(
       "Cancelar Agendamento",
@@ -300,7 +288,6 @@ export function Home() {
               setLoading(true);
               await appointmentService.updateStatus(appointment.id, "CANCELLED");
               
-              // 👇 CHAMA O WHATSAPP APÓS CANCELAR
               if (appointment.clientPhone) {
                 const phone = appointment.clientPhone.replace(/\D/g, "");
                 const fullPhone = phone.startsWith("55") ? phone : `55${phone}`;
@@ -362,7 +349,9 @@ export function Home() {
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
 
-  // --- COMPONENTE INTERNO: BARRA DE META ---
+  // ==============================================================================
+  // 🎮 BARRA DE META DO DONO (MENSAL)
+  // ==============================================================================
   const GoalProgressBar = () => {
     if (!dashboardData) return null;
     const currentRevenue = dashboardData.revenue || 0;
@@ -393,7 +382,6 @@ export function Home() {
           </View>
         </View>
 
-        {/* Barra de Progresso */}
         <View style={styles.progressBarBg}>
           <View style={[styles.progressBarFill, { width: `${displayProgress}%`, backgroundColor: currentGoal.color }]} />
         </View>
@@ -407,6 +395,52 @@ export function Home() {
           </Text>
         </View>
       </TouchableOpacity>
+    );
+  };
+
+  // ==============================================================================
+  // 🎮 BARRA DE META DO PROFISSIONAL (DIÁRIA - VIDEOGAME DA EQUIPE)
+  // ==============================================================================
+  const DailyGoalProgressBar = () => {
+    if (!dashboardData) return null;
+    const currentRevenue = dashboardData.todayRevenue || 0;
+    const dailyGoal = dashboardData.dailyGoal || 200;
+    const motivation = dashboardData.motivationMessage || "Bora dar o primeiro tapa no visual do dia!";
+    const progress = Math.min((currentRevenue / dailyGoal) * 100, 100);
+
+    return (
+      <View style={[styles.goalCard, { borderColor: 'rgba(16, 185, 129, 0.3)' }]}>
+        <View style={styles.goalHeaderRow}>
+          <View>
+            <Text style={styles.goalLabel}>Seu Faturamento Hoje</Text>
+            <Text style={[styles.goalRevenue, { color: theme.success }]}>
+              {formatCurrency(currentRevenue)}
+            </Text>
+          </View>
+          <View style={[styles.goalBadge, { backgroundColor: 'rgba(16, 185, 129, 0.2)', borderColor: theme.success }]}>
+              <Feather name="target" size={16} color={theme.success} />
+              <Text style={[styles.goalBadgeText, { color: theme.success }]}>
+                Meta Diária
+              </Text>
+          </View>
+        </View>
+
+        <Text style={styles.motivationText}>{motivation}</Text>
+
+        {/* Barra de Progresso Verde */}
+        <View style={styles.progressBarBg}>
+          <View style={[styles.progressBarFill, { width: `${progress}%`, backgroundColor: theme.success }]} />
+        </View>
+        
+        <View style={styles.goalFooterRow}>
+          <Text style={styles.goalFooterText}>
+            {progress.toFixed(0)}% concluído
+          </Text>
+          <Text style={[styles.goalFooterTarget, { color: theme.success }]}>
+            Alvo: {formatCurrency(dailyGoal)}
+          </Text>
+        </View>
+      </View>
     );
   };
 
@@ -459,14 +493,23 @@ export function Home() {
             </View>
         </View>
 
-        {/* ÁREA DE MÉTRICAS (OWNER) */}
+        {/* ============================================================ */}
+        {/* 👇 ÁREA DE MÉTRICAS (GAMIFICAÇÃO INTELIGENTE POR CARGO) 👇 */}
+        {/* ============================================================ */}
+        
         {user?.role === "OWNER" && dashboardData && (
           <View style={{ paddingHorizontal: 20 }}>
             <GoalProgressBar />
           </View>
         )}
 
-        {/* 👇 ACESSO RÁPIDO 👇 */}
+        {user?.role === "PROFESSIONAL" && dashboardData && (
+          <View style={{ paddingHorizontal: 20 }}>
+            <DailyGoalProgressBar />
+          </View>
+        )}
+
+        {/* ACESSO RÁPIDO */}
         <View style={styles.quickAccessSection}>
             <Text style={styles.quickAccessTitle}>Acesso Rápido</Text>
             
@@ -517,7 +560,7 @@ export function Home() {
             </View>
         </View>
 
-        {/* 👇 NOVO: BANNER DE UPGRADE (SÓ APARECE SE NÃO FOR PLUS) 👇 */}
+        {/* BANNER DE UPGRADE (SÓ APARECE SE NÃO FOR PLUS) */}
         {user?.plan !== 'PLUS' && (
             <TouchableOpacity 
                 activeOpacity={0.9} 
@@ -565,7 +608,7 @@ export function Home() {
                                     {appointment.clientName || "Cliente"}
                                 </Text>
 
-                                {/* 👇 NOVO: NOME DO PROFISSIONAL (EXCLUSIVO PARA O OWNER) 👇 */}
+                                {/* NOME DO PROFISSIONAL (EXCLUSIVO PARA O OWNER) */}
                                 {user?.role === "OWNER" && (
                                     <View style={styles.professionalRow}>
                                         <Feather name="scissors" size={10} color={theme.textSecondary} />
@@ -608,7 +651,7 @@ export function Home() {
                              </Text>
                          </View>
                          
-                         {/* BOTÕES DE AÇÃO RÁPIDA (CONFIRMAR / CANCELAR) */}
+                         {/* BOTÕES DE AÇÃO RÁPIDA */}
                          {appointment.status === "PENDING" && (
                             <View style={styles.actionButtonsRow}>
                                 <TouchableOpacity
@@ -760,7 +803,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   goalLabel: {
     fontSize: 12,
@@ -788,6 +831,12 @@ const styles = StyleSheet.create({
   goalBadgeText: {
     fontSize: 13,
     fontWeight: '800',
+  },
+  motivationText: {
+    fontSize: 13,
+    color: theme.goldLight,
+    fontStyle: 'italic',
+    marginBottom: 12,
   },
   progressBarBg: {
     height: 10,
@@ -930,7 +979,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    flex: 1, // 👇 Evita que os textos empurrem o layout
+    flex: 1, 
   },
   clientIconBg: {
     backgroundColor: 'rgba(212, 175, 55, 0.1)',
@@ -943,7 +992,6 @@ const styles = StyleSheet.create({
     color: theme.textPrimary,
   },
   
-  // 👇 NOVOS ESTILOS DO HISTÓRICO E PROFISSIONAL 👇
   professionalRow: {
     flexDirection: 'row',
     alignItems: 'center',
