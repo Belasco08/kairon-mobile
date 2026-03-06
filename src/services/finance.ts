@@ -17,6 +17,9 @@ export interface MonthlyHistoryData {
 }
 
 export interface DashboardData {
+  safeBalance: number;
+  upcomingPayables: never[];
+  pendingExpenses: number;
   revenue: number;
   expenses: number;
   balance: number;
@@ -144,15 +147,25 @@ const mapApiRecordToApp = (r: ApiFinancialRecord): FinancialRecord => {
 export const financeService = {
   
   /* ---------- DASHBOARD PRINCIPAL ---------- */
-  getDashboard: async (params: { period: Period }): Promise<DashboardData> => {
+ getDashboard: async (params: { period: Period }): Promise<DashboardData> => {
     try {
         const response = await api.get('/financial/dashboard', { params });
         return response.data;
     } catch (error) {
         console.warn("Dashboard endpoint failed", error);
+        // 👇 Agora o fallback tem os campos do CFO Digital zerados 👇
         return {
-            revenue: 0, expenses: 0, balance: 0, appointmentCount: 0, averageTicket: 0,
-            dailyEvolution: [], topServices: [], busyHours: []
+            revenue: 0, 
+            expenses: 0, 
+            balance: 0, 
+            appointmentCount: 0, 
+            averageTicket: 0,
+            pendingExpenses: 0,
+            safeBalance: 0,
+            upcomingPayables: [],
+            dailyEvolution: [], 
+            topServices: [], 
+            busyHours: []
         };
     }
   },

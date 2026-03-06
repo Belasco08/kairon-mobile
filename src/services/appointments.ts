@@ -29,6 +29,8 @@ export interface Appointment {
     name: string;
     phone: string;
     email?: string;
+
+    paymentMethod?: string; // 👈 NOVO
   };
 
   professionalName?: string;
@@ -91,11 +93,8 @@ export const appointmentService = {
     return response.data;
   },
 
-  // 👇 NOVA FUNÇÃO: Busca os agendamentos apenas de um cliente específico
-  // Adicione ou substitua essa função dentro do seu appointmentService
   listByClient: async (clientId: string) => {
     try {
-      // 👇 A URL tem que ser exatamente esta para bater no endpoint novo do Java!
       const response = await api.get(`/appointments/client/${clientId}`);
       return response.data;
     } catch (error) {
@@ -114,25 +113,24 @@ export const appointmentService = {
     return response.data;
   },
 
-  // Método genérico de atualização (Resolve o erro da Home)
   update: async (id: string, data: Partial<Appointment> | any) => {
-    // Se você estiver apenas atualizando o status e seu backend for estrito,
-    // ele pode preferir a rota /status abaixo, mas geralmente PUT /appointments/{id} funciona.
     const response = await api.put(`/appointments/${id}`, data);
     return response.data;
   },
 
-  // Atualização específica de status (Rota dedicada do Backend)
   updateStatus: async (
     id: string,
     status: string,
     reason?: string,
-    isPaid: boolean = true // 👈 Adicionado o parâmetro com default true
+    isPaid: boolean = true,
+    paymentMethod?: string // 👈 NOVO PARÂMETRO
   ) => {
-    const response = await api.patch(`/appointments/${id}/status`, {
+    // 👇 TROCAMOS DE api.patch PARA api.put
+    const response = await api.put(`/appointments/${id}/status`, {
       status,
       reason,
-      isPaid, // 👈 Enviando pro backend
+      isPaid, 
+      paymentMethod, // 👈 ENVIANDO PARA O JAVA
     });
     return response.data;
   },
@@ -149,7 +147,6 @@ export const appointmentService = {
     return response.data;
   },
 
-  // Helpers reutilizando a função updateStatus
   cancel: async (id: string, reason?: string) => {
     return appointmentService.updateStatus(id, "CANCELLED", reason);
   },
@@ -158,7 +155,6 @@ export const appointmentService = {
     return appointmentService.updateStatus(id, "COMPLETED");
   },
   
-  // Métodos Públicos
   getAvailableSlots: async (params: {
     serviceId: string;
     professionalId: string;
@@ -170,6 +166,12 @@ export const appointmentService = {
 
   createPublic: async (data: any) => {
     const response = await api.post("/public/appointments", data);
+    return response.data;
+  },
+
+  // 👇 Rota dedicada e mais rápida (O Java já faz o filtro e pega a empresa pelo token)
+  getCompletedForReview: async () => {
+    const response = await api.get('/appointments/completed-for-review');
     return response.data;
   },
 };

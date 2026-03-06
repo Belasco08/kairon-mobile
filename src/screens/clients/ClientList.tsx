@@ -17,7 +17,7 @@ import {
   Alert
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { Feather, FontAwesome } from '@expo/vector-icons'; // FontAwesome para o ícone do WhatsApp
+import { Feather, FontAwesome } from '@expo/vector-icons'; 
 
 import { useAuth } from '../../contexts/AuthContext';
 import { clientService } from '../../services/clients'; 
@@ -28,9 +28,9 @@ import { EmptyState } from '../../components/shared/EmptyState';
 // 🎨 TEMA KAIRON PREMIUM (Azul Marinho e Dourado)
 // ==============================================================================
 const theme = {
-  primary: '#0F172A',      // Azul Marinho Profundo
-  cardBg: '#1E293B',       // Azul Claro para os cartões
-  gold: '#D4AF37',         // Dourado Kairon
+  primary: '#0F172A',      
+  cardBg: '#1E293B',       
+  gold: '#D4AF37',         
   goldLight: '#FDE68A',
   textPrimary: '#FFFFFF',
   textSecondary: '#94A3B8',
@@ -48,7 +48,7 @@ interface Client {
   totalSpent: number;
 }
 
-// Nova interface para os clientes sumidos
+// Interface para os clientes sumidos
 interface MissingClient {
   id: string;
   name: string;
@@ -58,7 +58,7 @@ interface MissingClient {
   lastVisitDate: string;
 }
 
-// Adicionamos a opção 'missing' aos filtros
+// Opção 'missing' nos filtros
 type SortOption = 'name' | 'spent' | 'visits' | 'missing';
 
 export function ClientList() {
@@ -69,7 +69,7 @@ export function ClientList() {
   const [refreshing, setRefreshing] = useState<boolean>(false);
   
   const [clients, setClients] = useState<Client[]>([]);
-  const [missingClients, setMissingClients] = useState<MissingClient[]>([]); // Estado pros sumidos
+  const [missingClients, setMissingClients] = useState<MissingClient[]>([]); 
   const [search, setSearch] = useState<string>('');
   
   const [sortBy, setSortBy] = useState<SortOption>('name');
@@ -87,7 +87,7 @@ export function ClientList() {
       if (!refreshing) setLoading(true);
       
       if (sortBy === 'missing') {
-        // Se a aba Sumidos estiver ativa, busca no novo endpoint
+        // Busca na rota de clientes sumidos
         const response = await clientService.getMissingClients(30); 
         setMissingClients(response);
       } else {
@@ -103,7 +103,6 @@ export function ClientList() {
     }
   };
 
-  // Recarrega os dados toda vez que muda de aba
   useFocusEffect(
     useCallback(() => {
       loadClients();
@@ -152,9 +151,8 @@ export function ClientList() {
       }
   };
 
-  // Processamento da busca e ordenação para a lista normal
   const processedClients = useMemo(() => {
-    if (sortBy === 'missing') return []; // Não usa isso se tiver na aba sumidos
+    if (sortBy === 'missing') return []; 
 
     let result = clients.filter(client =>
       client.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -170,14 +168,13 @@ export function ClientList() {
     });
   }, [clients, search, sortBy]);
 
-  // Processamento da busca para a lista de sumidos
   const processedMissingClients = useMemo(() => {
       if (sortBy !== 'missing') return [];
 
       return missingClients.filter(client =>
         client.name.toLowerCase().includes(search.toLowerCase()) ||
         (client.phone && client.phone.includes(search))
-      ).sort((a, b) => b.daysAway - a.daysAway); // Ordena pelos mais sumidos primeiro
+      ).sort((a, b) => b.daysAway - a.daysAway); 
   }, [missingClients, search, sortBy]);
 
   const formatCurrency = (value: number) => {
@@ -354,10 +351,10 @@ export function ClientList() {
               <ActivityIndicator size="large" color={theme.gold} />
             </View>
           ) : (
-            <FlatList<any> // 👈 Correção: Adicionado o <any> aqui
+            <FlatList<any> 
               data={sortBy === 'missing' ? processedMissingClients : processedClients}
               keyExtractor={(item) => item.id}
-              renderItem={sortBy === 'missing' ? renderMissingClient : renderClient} // 👈 Correção: Removido o 'as any'
+              renderItem={sortBy === 'missing' ? renderMissingClient : renderClient} 
               refreshControl={
                 <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.gold} />
               }

@@ -24,14 +24,14 @@ import { EmptyState } from '../../components/shared/EmptyState';
 // 🎨 TEMA KAIRON PREMIUM
 // ==============================================================================
 const theme = {
-  primary: '#0F172A',      // Azul Marinho Fundo
-  cardBg: '#1E293B',       // Azul Marinho Cartões
-  gold: '#D4AF37',         // Dourado Principal
+  primary: '#0F172A',      
+  cardBg: '#1E293B',       
+  gold: '#D4AF37',         
   goldLight: '#FDE68A',
   textPrimary: '#FFFFFF',
   textSecondary: '#94A3B8',
   success: '#10B981',
-  danger: '#EF4444',       // Vermelho para cancelados / Dívidas
+  danger: '#EF4444',       
   border: 'rgba(255, 255, 255, 0.05)',
 };
 
@@ -57,6 +57,9 @@ export function ClientDetails() {
   const [client, setClient] = useState<any>(null);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'info' | 'appointments'>('info');
+
+  // 👇 META DE FIDELIDADE (Futuramente virá das configurações da barbearia no banco)
+  const FIDELITY_GOAL = 10; 
 
   useEffect(() => {
     loadClient();
@@ -97,7 +100,6 @@ export function ClientDetails() {
     Linking.openURL(`whatsapp://send?phone=${fullPhone}&text=Olá ${client.name}!`);
   };
 
-  // 👇 NOVA FUNÇÃO: Cobrar Cliente (Fiado)
   const handleChargeWhatsApp = () => {
     if (!client?.phone) {
         Alert.alert("Aviso", "Este cliente não possui telefone cadastrado para cobrança.");
@@ -106,13 +108,11 @@ export function ClientDetails() {
     const phone = client.phone.replace(/\D/g, "");
     const fullPhone = phone.startsWith("55") ? phone : `55${phone}`;
     
-    // Mensagem educada de cobrança
     const message = `Fala ${client.name.split(' ')[0]}, tudo bem? Passando pra deixar o resumo da sua conta aqui na barbearia, que ficou em ${formatCurrency(client.debtBalance)}. \n\nQuando puder realizar o acerto, me avisa! 👊\n\nChave PIX: (Coloque sua chave aqui)`;
     
     Linking.openURL(`whatsapp://send?phone=${fullPhone}&text=${encodeURIComponent(message)}`);
   };
 
-  // 👇 NOVA FUNÇÃO: Quitar Dívida
   const handleSettleDebt = () => {
     Alert.alert(
       "Quitar Conta",
@@ -120,9 +120,30 @@ export function ClientDetails() {
       [
         { text: "Cancelar", style: "cancel" },
         { text: "Sim, Quitar", onPress: () => {
-            // Aqui você vai chamar a API para zerar a dívida futuramente
+            // Futuramente integrar a chamada da API
             Alert.alert("Sucesso", "A conta do cliente foi quitada!");
-            setClient({...client, debtBalance: 0}); // Zera na tela para dar feedback imediato
+            setClient({...client, debtBalance: 0}); 
+        }}
+      ]
+    );
+  };
+  const handleRedeemReward = () => {
+    Alert.alert(
+      "Resgatar Prêmio 🎉",
+      `Deseja resgatar 10 selos de ${client.name} e conceder o serviço gratuito?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        { text: "Sim, Resgatar", onPress: async () => {
+            try {
+                // Chama a API para descontar os 10 selos
+                await clientService.redeemFidelity(client.id);
+                Alert.alert("Sucesso!", "Prêmio resgatado! O cliente ganhou o corte grátis.");
+                
+                // Recarrega a tela para a animação das bolinhas atualizar
+                loadClient(); 
+            } catch (error) {
+                Alert.alert("Erro", "Não foi possível resgatar o prêmio.");
+            }
         }}
       ]
     );
@@ -164,6 +185,11 @@ export function ClientDetails() {
     );
   }
 
+  // Lógica matemática para exibir os selos
+  const currentStamps = client.fidelityStamps || 0;
+  const isRewardReady = currentStamps >= FIDELITY_GOAL;
+  const stampsToShow = Math.min(currentStamps, FIDELITY_GOAL);
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={theme.primary} />
@@ -194,8 +220,47 @@ export function ClientDetails() {
         </View>
 
         {/* ========================================================= */}
-        {/* 👇 CARD DE DÍVIDA (FIADO) - SÓ APARECE SE DEVER ALGO 👇 */}
+        {/* 👇 NOVO: CARTÃO DE FIDELIDADE GAMIFICADO 👇 */}
         {/* ========================================================= */}
+        <View style={styles.fidelityCard}>
+          <View style={styles.fidelityHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Feather name="award" size={20} color={theme.gold} />
+                  <Text style={styles.fidelityTitle}>Clube de Fidelidade</Text>
+              </View>
+              <Text style={styles.fidelityCount}>{stampsToShow} / {FIDELITY_GOAL}</Text>
+          </View>
+          
+          <Text style={styles.fidelitySubtitle}>
+              {isRewardReady 
+                  ? "Recompensa liberada! 🎉" 
+                  : `Faltam ${FIDELITY_GOAL - stampsToShow} visitas para o próximo prêmio.`}
+          </Text>
+
+          <View style={styles.stampsGrid}>
+              {Array.from({ length: FIDELITY_GOAL }).map((_, index) => {
+                  const isFilled = index < stampsToShow;
+                  return (
+                      <View key={index} style={[styles.stampBox, isFilled && styles.stampBoxFilled]}>
+                          {isFilled ? (
+                              <Feather name="check" size={18} color={theme.primary} />
+                          ) : (
+                              <Feather name="scissors" size={14} color="rgba(255,255,255,0.1)" />
+                          )}
+                      </View>
+                  );
+              })}
+          </View>
+
+          {isRewardReady && (
+              <TouchableOpacity style={styles.redeemBtn} onPress={handleRedeemReward}>
+                  <Text style={styles.redeemBtnText}>RESGATAR PRÊMIO</Text>
+                  <Feather name="gift" size={16} color={theme.primary} />
+              </TouchableOpacity>
+          )}
+        </View>
+
+        {/* CARD DE DÍVIDA (FIADO) */}
         {client.debtBalance > 0 && (
           <View style={styles.debtCard}>
              <View style={styles.debtHeader}>
@@ -232,12 +297,12 @@ export function ClientDetails() {
             <View style={styles.statBox}>
                 <Feather name="scissors" size={20} color={theme.gold} style={{marginBottom: 8}} />
                 <Text style={styles.statValue}>{client.totalAppointments || 0}</Text>
-                <Text style={styles.statLabel}>Visitas</Text>
+                <Text style={styles.statLabel}>Visitas Totais</Text>
             </View>
             <View style={styles.statBox}>
                 <Feather name="dollar-sign" size={20} color={theme.success} style={{marginBottom: 8}} />
                 <Text style={styles.statValue}>{formatCurrency(client.totalSpent)}</Text>
-                <Text style={styles.statLabel}>Total Pago</Text>
+                <Text style={styles.statLabel}>Total Gasto</Text>
             </View>
         </View>
 
@@ -426,7 +491,81 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 
-  // 👇 ESTILOS DO CARD DE DÍVIDA 👇
+  // 👇 ESTILOS DO CARTÃO DE FIDELIDADE 👇
+  fidelityCard: {
+    backgroundColor: 'rgba(212, 175, 55, 0.05)',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(212, 175, 55, 0.3)',
+    marginBottom: 24,
+  },
+  fidelityHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  fidelityTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: theme.gold,
+    marginLeft: 8,
+    textTransform: 'uppercase',
+  },
+  fidelityCount: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: theme.textPrimary,
+  },
+  fidelitySubtitle: {
+    fontSize: 13,
+    color: theme.textSecondary,
+    marginBottom: 20,
+  },
+  stampsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    justifyContent: 'center',
+  },
+  stampBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stampBoxFilled: {
+    backgroundColor: theme.gold,
+    borderColor: theme.goldLight,
+    shadowColor: theme.gold,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  redeemBtn: {
+    backgroundColor: theme.gold,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 20,
+    gap: 8,
+  },
+  redeemBtnText: {
+    color: theme.primary,
+    fontWeight: '900',
+    fontSize: 14,
+    letterSpacing: 1,
+  },
+
+  // ESTILOS DO CARD DE DÍVIDA
   debtCard: {
     backgroundColor: 'rgba(239, 68, 68, 0.05)',
     borderRadius: 16,

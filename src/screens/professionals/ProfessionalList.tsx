@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,12 +16,11 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialIcons } from '@expo/vector-icons';
 
 import { useAuth } from '../../contexts/AuthContext';
 import { professionalService } from '../../services/professionals';
-import { api } from '../../services/api'; 
-import { Button } from '../../components/ui/Button'; 
+import { Input } from '../../components/ui/Input'; 
 import { EmptyState } from '../../components/shared/EmptyState';
 
 // ==============================================================================
@@ -55,6 +54,10 @@ interface Professional {
   isActive?: boolean; 
   active?: boolean;
   services?: Array<{ id: string; name: string }>;
+  // 👇 CAMPOS FINANCEIROS (COMISSÃO)
+  totalAppointments?: number;
+  pendingCommission?: number;
+  commissionPercentage?: number;
 }
 
 type RootStackParamList = {
@@ -73,30 +76,26 @@ export function ProfessionalList() {
   const [refreshing, setRefreshing] = useState(false);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [showOnlyActive, setShowOnlyActive] = useState(false); 
+  const [search, setSearch] = useState(''); // 👇 ESTADO DA BUSCA
 
   useEffect(() => {
     loadProfessionals();
   }, []);
 
-  // --- HELPER PARA CORRIGIR URL DA FOTO (PADRÃO KAIRON) ---
+  // --- HELPER PARA CORRIGIR URL DA FOTO ---
   const getAvatarUrl = (path: string | undefined) => {
     if (!path) return null;
-
-    if (path.startsWith('http')) {
-      return { uri: path };
-    }
+    if (path.startsWith('http')) return { uri: path };
 
     const baseUrl = API_URL.endsWith('/') ? API_URL.slice(0, -1) : API_URL;
     let cleanPath = path.startsWith('/') ? path : `/${path}`;
-    const finalUrl = `${baseUrl}${cleanPath}`;
-    
-    return { uri: `${finalUrl}?t=${new Date().getDate()}` }; 
+    return { uri: `${baseUrl}${cleanPath}?t=${new Date().getDate()}` }; 
   };
 
   const loadProfessionals = async () => {
     try {
-      setLoading(true);
-      const response = await professionalService.list() as any; // 🔧 CORREÇÃO DO ERRO 'never'
+      if (!refreshing) setLoading(true);
+      const response = await professionalService.list() as any; 
       const data = Array.isArray(response) ? response : (response.content || []);
       setProfessionals(data);
     } catch (error) {
@@ -115,6 +114,29 @@ export function ProfessionalList() {
 
   const isProfessionalActive = (p: Professional) => {
     return p.isActive !== undefined ? p.isActive : p.active;
+  };
+
+  // 👇 FUNÇÃO DE ACERTO DE COMISSÃO 👇
+  const handlePayCommissions = (prof: Professional) => {
+    Alert.alert(
+      "Acerto de Comissões 💰",
+      `Deseja confirmar o pagamento de ${formatCurrency(prof.pendingCommission || 0)} para ${prof.name.split(' ')[0]} e zerar o saldo pendente?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Confirmar Acerto", 
+          onPress: async () => {
+            try {
+              await professionalService.payCommission(prof.id);
+              Alert.alert("Sucesso!", "Comissão zerada e registrada no caixa.");
+              loadProfessionals(); // Recarrega para zerar na tela
+            } catch (error) {
+              Alert.alert("Erro", "Não foi possível registrar o pagamento.");
+            }
+          } 
+        }
+      ]
+    );
   };
 
   const toggleActiveStatus = async (professionalId: string, currentValue: boolean | undefined) => {
@@ -153,157 +175,198 @@ export function ProfessionalList() {
     );
   };
 
-  const displayedProfessionals = professionals.filter(p => {
-    if (showOnlyActive) {
-      return isProfessionalActive(p) === true;
-    }
-    return true;
-  });
+  // Aplica filtro de ativos e barra de busca
+  const displayedProfessionals = useMemo(() => {
+    return professionals.filter(p => {
+      const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase());
+      const matchesActive = showOnlyActive ? isProfessionalActive(p) === true : true;
+      return matchesSearch && matchesActive;
+    }).sort((a, b) => (b.pendingCommission || 0) - (a.pendingCommission || 0)); // Maior comissão no topo
+  }, [professionals, search, showOnlyActive]);
 
   const canManage = user?.role === 'OWNER' || user?.role === 'STAFF';
 
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+  };
+
   const renderProfessional = ({ item }: { item: Professional }) => {
     const active = isProfessionalActive(item);
-    
     const rawPath = item.photoUrl || item.avatar;
     const avatarSource = getAvatarUrl(rawPath);
+    const hasCommission = (item.pendingCommission || 0) > 0;
 
     return (
-      <TouchableOpacity
-        style={[styles.card, !active && styles.cardInactive]}
-        activeOpacity={0.7}
-        onPress={() => {
-            if (canManage) navigation.navigate('EditProfessional', { professionalId: item.id });
-        }}
-      >
-        <View style={styles.avatarContainer}>
-          {avatarSource ? (
-            <Image 
-              source={avatarSource} 
-              style={styles.avatarImage} 
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.avatarPlaceholder}>
-               <Feather name="user" size={24} color={theme.gold} />
-            </View>
-          )}
-        </View>
-
-        <View style={styles.cardContent}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-            {!active && (
-                <View style={styles.inactiveBadge}>
-                  <Text style={styles.inactiveText}>Inativo</Text>
-                </View>
+      <View style={[styles.card, !active && styles.cardInactive]}>
+        
+        {/* CABEÇALHO DO CARD (Sua estrutura original adaptada) */}
+        <TouchableOpacity 
+           style={styles.cardHeader}
+           activeOpacity={0.7}
+           onPress={() => {
+               if (canManage) navigation.navigate('EditProfessional', { professionalId: item.id });
+           }}
+        >
+          <View style={styles.avatarContainer}>
+            {avatarSource ? (
+              <Image source={avatarSource} style={styles.avatarImage} resizeMode="cover" />
+            ) : (
+              <View style={styles.avatarPlaceholder}>
+                 <Feather name="user" size={24} color={theme.gold} />
+              </View>
             )}
           </View>
 
-          <Text style={styles.specialty}>
-             {item.specialty || "Profissional Geral"}
-          </Text>
-
-          <View style={styles.contactRow}>
-             {item.phone && (
-                 <View style={styles.contactItem}>
-                    <Feather name="phone" size={12} color={theme.textSecondary} />
-                    <Text style={styles.contactText}>{item.phone}</Text>
-                 </View>
-             )}
-          </View>
-        </View>
-
-        {canManage && (
-            <View style={styles.cardActions}>
-                <TouchableOpacity 
-                    onPress={() => handleDelete(item.id)} 
-                    style={styles.deleteButton}
-                >
-                    <Feather name="trash-2" size={18} color={theme.danger} />
-                </TouchableOpacity>
-
-                <View style={styles.switchContainer}>
-                    <Switch
-                        value={!!active}
-                        onValueChange={() => toggleActiveStatus(item.id, active)}
-                        trackColor={{ false: 'rgba(255,255,255,0.1)', true: theme.gold }}
-                        thumbColor={!!active ? theme.primary : '#94A3B8'}
-                        style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-                    />
-                </View>
+          <View style={styles.cardContent}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+              {!active && (
+                  <View style={styles.inactiveBadge}>
+                    <Text style={styles.inactiveText}>Inativo</Text>
+                  </View>
+              )}
             </View>
-        )}
-      </TouchableOpacity>
-    );
-  };
 
-  const renderHeader = () => (
-    <View style={styles.headerContainer}>
-      <View style={styles.headerTop}>
-        <View>
-          <Text style={styles.headerTitle}>Profissionais</Text>
-          <Text style={styles.headerSubtitle}>{displayedProfessionals.length} membros na equipe</Text>
+            <Text style={styles.specialty}>
+               {item.specialty || "Profissional Geral"} {item.commissionPercentage ? `• ${item.commissionPercentage}%` : ''}
+            </Text>
+
+            <View style={styles.contactRow}>
+               {item.phone && (
+                   <View style={styles.contactItem}>
+                      <Feather name="phone" size={12} color={theme.textSecondary} />
+                      <Text style={styles.contactText}>{item.phone}</Text>
+                   </View>
+               )}
+            </View>
+          </View>
+
+          {canManage && (
+              <View style={styles.cardActions}>
+                  <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.deleteButton}>
+                      <Feather name="trash-2" size={18} color={theme.danger} />
+                  </TouchableOpacity>
+                  <View style={styles.switchContainer}>
+                      <Switch
+                          value={!!active}
+                          onValueChange={() => toggleActiveStatus(item.id, active)}
+                          trackColor={{ false: 'rgba(255,255,255,0.1)', true: theme.gold }}
+                          thumbColor={!!active ? theme.primary : '#94A3B8'}
+                          style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
+                      />
+                  </View>
+              </View>
+          )}
+        </TouchableOpacity>
+
+        {/* 👇 MOTOR FINANCEIRO (Estatísticas e Botão) 👇 */}
+        <View style={styles.statsRow}>
+           <View style={styles.statBox}>
+              <Text style={styles.statLabel}>Serviços (Mês)</Text>
+              <Text style={styles.statValue}>{item.totalAppointments || 0}</Text>
+           </View>
+           <View style={styles.statBoxDivider} />
+           <View style={styles.statBox}>
+              <Text style={styles.statLabel}>A Receber</Text>
+              <Text style={[styles.statValue, { color: hasCommission ? theme.success : theme.textPrimary }]}>
+                 {formatCurrency(item.pendingCommission || 0)}
+              </Text>
+           </View>
         </View>
-        
+
         {canManage && (
             <TouchableOpacity 
-                style={styles.btnNew}
-                onPress={() => navigation.navigate('CreateProfessional')}
+               style={[styles.payButton, !hasCommission && styles.payButtonDisabled]}
+               disabled={!hasCommission}
+               onPress={() => handlePayCommissions(item)}
             >
-                <Feather name="plus" size={20} color={theme.primary} />
-                <Text style={styles.btnNewText}>Novo</Text>
+               <MaterialIcons name="payments" size={18} color={hasCommission ? theme.primary : theme.textSecondary} />
+               <Text style={[styles.payButtonText, !hasCommission && styles.payButtonTextDisabled]}>
+                  {hasCommission ? "REALIZAR ACERTO" : "NADA PENDENTE"}
+               </Text>
             </TouchableOpacity>
         )}
       </View>
-
-      <View style={styles.filterRow}>
-        <TouchableOpacity 
-          style={styles.filterContainer} 
-          activeOpacity={0.8}
-          onPress={() => setShowOnlyActive(!showOnlyActive)}
-        >
-            <Text style={styles.filterText}>Ocultar inativos</Text>
-            <Switch
-              value={showOnlyActive}
-              onValueChange={setShowOnlyActive}
-              trackColor={{ false: 'rgba(255,255,255,0.1)', true: theme.gold }}
-              thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
-              style={{ transform: [{ scaleX: 0.7 }, { scaleY: 0.7 }] }}
-            />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-
-  if (loading && !refreshing) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.gold} />
-      </View>
     );
-  }
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={theme.primary} />
-      <FlatList
-        data={displayedProfessionals}
-        keyExtractor={item => item.id}
-        renderItem={renderProfessional}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.gold} />}
-        ListHeaderComponent={renderHeader}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <EmptyState
-            title="Nenhum profissional"
-            description="Adicione sua equipe para começar os agendamentos."
-            actionText="Adicionar Profissional"
-            onAction={() => navigation.navigate('CreateProfessional')}
-          />
-        }
-      />
+      
+      {/* HEADER FIXO E BUSCA */}
+      <View style={styles.headerContainer}>
+         <View style={styles.headerTop}>
+             <View>
+                 <Text style={styles.headerTitle}>Equipe</Text>
+                 <Text style={styles.headerSubtitle}>{professionals.length} membros cadastrados</Text>
+             </View>
+             
+             {canManage && (
+                 <TouchableOpacity 
+                     style={styles.btnNew}
+                     onPress={() => navigation.navigate('CreateProfessional')}
+                 >
+                     <Feather name="plus" size={20} color={theme.primary} />
+                     <Text style={styles.btnNewText}>Novo</Text>
+                 </TouchableOpacity>
+             )}
+         </View>
+
+         <View style={styles.searchContainer}>
+             <Feather name="search" size={20} color={theme.textSecondary} style={{ marginRight: 8 }} />
+             <Input
+                placeholder="Buscar barbeiro..."
+                placeholderTextColor={theme.textSecondary}
+                value={search}
+                onChangeText={setSearch}
+                containerStyle={{ marginBottom: 0, flex: 1, borderWidth: 0 }} 
+                style={{ backgroundColor: 'transparent', height: 44, color: theme.textPrimary }}
+             />
+         </View>
+
+         <View style={styles.filterRow}>
+            <TouchableOpacity 
+              style={styles.filterContainer} 
+              activeOpacity={0.8}
+              onPress={() => setShowOnlyActive(!showOnlyActive)}
+            >
+                <Text style={styles.filterText}>Ocultar inativos</Text>
+                <Switch
+                  value={showOnlyActive}
+                  onValueChange={setShowOnlyActive}
+                  trackColor={{ false: 'rgba(255,255,255,0.1)', true: theme.gold }}
+                  thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                  style={{ transform: [{ scaleX: 0.7 }, { scaleY: 0.7 }] }}
+                />
+            </TouchableOpacity>
+         </View>
+      </View>
+
+      <View style={styles.contentWrapper}>
+          {loading && !refreshing ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={theme.gold} />
+            </View>
+          ) : (
+            <FlatList
+              data={displayedProfessionals}
+              keyExtractor={item => item.id}
+              renderItem={renderProfessional}
+              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.gold} />}
+              contentContainerStyle={styles.listContent}
+              showsVerticalScrollIndicator={false}
+              ListEmptyComponent={
+                <EmptyState
+                  title="Nenhum profissional"
+                  description="Nenhum membro da equipe encontrado."
+                  actionText="Adicionar Profissional"
+                  onAction={() => navigation.navigate('CreateProfessional')}
+                />
+              }
+            />
+          )}
+      </View>
     </SafeAreaView>
   );
 }
@@ -314,19 +377,28 @@ const styles = StyleSheet.create({
     backgroundColor: theme.primary,
     paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 0) : 0,
   },
+  contentWrapper: {
+    flex: 1,
+    backgroundColor: '#0B1120',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: theme.primary,
   },
   listContent: {
     paddingBottom: 80,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
   },
+  
+  // Header e Busca
   headerContainer: {
-    paddingVertical: 20,
-    marginBottom: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    backgroundColor: theme.primary,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
   },
   headerTop: {
     flexDirection: 'row',
@@ -342,10 +414,8 @@ const styles = StyleSheet.create({
   headerSubtitle: {
     fontSize: 14,
     color: theme.goldLight,
-    marginTop: 4,
+    marginTop: 2,
   },
-  
-  // Botão "Novo" Customizado
   btnNew: { 
     backgroundColor: theme.gold, 
     flexDirection: 'row', 
@@ -360,7 +430,16 @@ const styles = StyleSheet.create({
     fontWeight: '800', 
     fontSize: 14 
   },
-
+  searchContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: theme.cardBg, 
+    borderRadius: 12, 
+    paddingHorizontal: 12, 
+    borderWidth: 1, 
+    borderColor: 'rgba(212, 175, 55, 0.2)',
+    marginBottom: 12
+  },
   filterRow: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
@@ -382,13 +461,12 @@ const styles = StyleSheet.create({
     fontWeight: '600'
   },
   
-  // Cards
+  // Cards Principais
   card: {
-    flexDirection: 'row',
     backgroundColor: theme.cardBg,
     borderRadius: 16,
     padding: 16,
-    marginBottom: 12,
+    marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
@@ -399,6 +477,10 @@ const styles = StyleSheet.create({
   },
   cardInactive: {
     opacity: 0.6,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    marginBottom: 16,
   },
   avatarContainer: {
     marginRight: 16,
@@ -437,7 +519,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   specialty: {
-    fontSize: 14,
+    fontSize: 13,
     color: theme.goldLight,
     marginBottom: 8,
     fontWeight: '500'
@@ -484,4 +566,24 @@ const styles = StyleSheet.create({
     color: theme.textSecondary,
     textTransform: 'uppercase',
   },
+
+  // Motor Financeiro
+  statsRow: { 
+    flexDirection: 'row', 
+    backgroundColor: 'rgba(0,0,0,0.2)', 
+    borderRadius: 12, 
+    padding: 12, 
+    marginBottom: 16, 
+    borderWidth: 1, 
+    borderColor: 'rgba(255,255,255,0.05)' 
+  },
+  statBox: { flex: 1, alignItems: 'center' },
+  statBoxDivider: { width: 1, backgroundColor: 'rgba(255,255,255,0.1)', marginHorizontal: 12 },
+  statLabel: { fontSize: 11, color: theme.textSecondary, textTransform: 'uppercase', fontWeight: '600', marginBottom: 4 },
+  statValue: { fontSize: 18, fontWeight: '800', color: theme.textPrimary },
+  
+  payButton: { backgroundColor: theme.gold, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 12, gap: 8 },
+  payButtonDisabled: { backgroundColor: 'transparent', borderWidth: 1, borderColor: theme.border },
+  payButtonText: { color: theme.primary, fontWeight: '900', fontSize: 13, letterSpacing: 0.5 },
+  payButtonTextDisabled: { color: theme.textSecondary }
 });

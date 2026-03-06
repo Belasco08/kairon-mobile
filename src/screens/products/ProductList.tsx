@@ -61,6 +61,7 @@ export function ProductList() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [sellQty, setSellQty] = useState('1');
   const [clientName, setClientName] = useState('');
+  const [clientPhone, setClientPhone] = useState(''); // 👈 NOVO ESTADO AQUI
   const [paymentMethod, setPaymentMethod] = useState('PIX');
   const [selling, setSelling] = useState(false);
 
@@ -99,6 +100,7 @@ export function ProductList() {
     setSelectedProduct(product);
     setSellQty('1');
     setClientName('');
+    setClientPhone(''); // 👈 LIMPA O TELEFONE AO ABRIR O MODAL
     setPaymentMethod('PIX');
     setSellModalVisible(true);
   };
@@ -119,17 +121,17 @@ export function ProductList() {
         await productService.sell(selectedProduct.id, {
             quantity: qtd,
             clientName: clientName || "Cliente Balcão",
+            clientPhone: clientPhone || "", // 👈 MANDANDO O TELEFONE PRO BACKEND
             paymentMethod: paymentEnum
         });
 
-        Alert.alert("Sucesso", "Venda realizada! Estoque e Caixa atualizados.");
+        Alert.alert("Sucesso", "Venda realizada! Cliente e Caixa atualizados.");
         setSellModalVisible(false);
         loadProducts(); 
 
     } catch (error: any) {
         console.error("Erro na Venda:", error.response?.data || error.message);
         
-        // 👇 A MÁGICA DO UPSELL NA VENDA
         const errorMessage = error.response?.data?.message || "";
         if (errorMessage.includes("plano PLUS") || errorMessage.includes("upgrade")) {
             setSellModalVisible(false);
@@ -184,10 +186,8 @@ export function ProductList() {
                     } catch (error: any) {
                         console.error("Erro no Update de Estoque:", error.response?.data || error.message);
                         
-                        // 👇 A MÁGICA DO UPSELL NO USO INTERNO
                         const errorMessage = error.response?.data?.message || "";
                         if (errorMessage.includes("plano PLUS") || errorMessage.includes("upgrade")) {
-                            // Redireciona na hora pra tela de assinatura
                             navigation.navigate('SubscriptionScreen');
                             return;
                         }
@@ -376,6 +376,16 @@ export function ProductList() {
                         onChangeText={setClientName} 
                     />
 
+                    {/* 👇 NOVO CAMPO: WHATSAPP DO CLIENTE 👇 */}
+                    <Input 
+                        label="WhatsApp do Cliente (Recomendado)" 
+                        placeholder="Ex: 11999999999"
+                        placeholderTextColor={theme.textSecondary}
+                        value={clientPhone} 
+                        onChangeText={setClientPhone} 
+                        keyboardType="phone-pad"
+                    />
+
                     <View>
                         <Text style={styles.paymentLabel}>Forma de Pagamento</Text>
                         <View style={styles.paymentRow}>
@@ -454,7 +464,8 @@ const styles = StyleSheet.create({
   actionButtonTextDisabled: { color: theme.textSecondary, fontSize: 12, fontWeight: '800' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: theme.cardBg, borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 24, minHeight: 450, borderWidth: 1, borderColor: theme.border },
+  // Ajustei o minHeight aqui pra caber o campo novo sem cortar
+  modalContent: { backgroundColor: theme.cardBg, borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 24, minHeight: 520, borderWidth: 1, borderColor: theme.border },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   modalTitle: { fontSize: 22, fontWeight: '800', color: theme.textPrimary },
   modalProductName: { fontSize: 16, color: theme.textSecondary, marginBottom: 4, fontWeight: '500' },

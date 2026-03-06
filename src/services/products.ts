@@ -26,10 +26,11 @@ export interface CreateProductDTO {
 }
 
 // 👇 DTO para a Venda
-export interface SellProductDTO {
-  quantity: number;
-  clientName?: string;
-  paymentMethod: string;
+export interface SellProductDTO { // ou SellProductRequest
+    quantity: number;
+    clientName?: string;
+    clientPhone?: string; // 👈 ADICIONE ESTA LINHA AQUI
+    paymentMethod: string; // ou 'PIX' | 'CREDIT_CARD' | 'CASH'
 }
 
 export const productService = {

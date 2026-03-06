@@ -17,6 +17,9 @@ export interface Professional {
     id: string;
     name: string;
   }>;
+  // 👇 NOVOS CAMPOS PARA A TELA DE COMISSÕES
+  totalAppointments?: number;
+  pendingCommission?: number;
 }
 
 // Interface para criação/edição
@@ -86,4 +89,10 @@ export const professionalService = {
     const response = await api.get(`/professionals/${professionalId}/services`);
     return response.data;
   },
+
+  // 👇 NOVA FUNÇÃO: ZERAR COMISSÃO DO PROFISSIONAL (ACERTO DE CAIXA)
+  payCommission: async (professionalId: string) => {
+    const response = await api.post(`/professionals/${professionalId}/pay-commissions`);
+    return response.data;
+  }
 };

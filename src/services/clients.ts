@@ -54,10 +54,18 @@ export const clientService = {
     return response.data;
   },
   // Adicione junto com os outros métodos de clientService
-  getMissingClients: async (daysAway: number = 30) => {
-    // Passamos o daysAway como parâmetro, mas o padrão é 30
-    const response = await api.get(`/clients/missing?daysAway=${daysAway}`);
-    // O Spring Boot com paginação devolve os dados dentro de 'content'
-    return response.data.content || response.data; 
+  // 👇 BUSCA A LISTA DE CLIENTES SUMIDOS (MOTOR DE RETENÇÃO)
+  getMissingClients: async (days: number = 30) => {
+    // Estamos chamando a rota do RetentionController que criamos no Spring Boot
+    const response = await api.get('/retention/recover');
+    
+    // O backend já vai devolver a lista formatada com quem não vem há mais de 25/30 dias
+    return response.data;
+  },
+
+  // Adicione isso junto com as outras funções (create, update, get...)
+  redeemFidelity: async (clientId: string) => {
+    const response = await api.post(`/clients/${clientId}/fidelity/redeem`);
+    return response.data;
   },
 };
