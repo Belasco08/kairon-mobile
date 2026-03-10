@@ -19,6 +19,7 @@ import type { AppNavigation } from '../../@types/navigation';
 import { clientService } from '../../services/clients';
 import { appointmentService } from '../../services/appointments';
 import { EmptyState } from '../../components/shared/EmptyState';
+import { api } from '../../services/api';
 
 // ==============================================================================
 // 🎨 TEMA KAIRON PREMIUM
@@ -57,6 +58,7 @@ export function ClientDetails() {
   const [client, setClient] = useState<any>(null);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'info' | 'appointments'>('info');
+  const [isSettlingDebt, setIsSettlingDebt] = useState<boolean>(false);
 
   // 👇 META DE FIDELIDADE (Futuramente virá das configurações da barbearia no banco)
   const FIDELITY_GOAL = 10; 
@@ -119,10 +121,19 @@ export function ClientDetails() {
       `Deseja confirmar o pagamento de ${formatCurrency(client.debtBalance)} e zerar a conta deste cliente?`,
       [
         { text: "Cancelar", style: "cancel" },
-        { text: "Sim, Quitar", onPress: () => {
-            // Futuramente integrar a chamada da API
-            Alert.alert("Sucesso", "A conta do cliente foi quitada!");
-            setClient({...client, debtBalance: 0}); 
+        { text: "Sim, Quitar", onPress: async () => {
+            try {
+                setIsSettlingDebt(true);
+                // 👇 INTEGRAÇÃO COM A API PARA ZERAR A DÍVIDA 👇
+                await api.put(`/clients/${clientId}`, { debtBalance: 0 }); 
+                
+                Alert.alert("Sucesso", "A conta do cliente foi quitada!");
+                setClient({...client, debtBalance: 0}); 
+            } catch (error) {
+                Alert.alert("Erro", "Não foi possível quitar a dívida no servidor.");
+            } finally {
+                setIsSettlingDebt(false);
+            }
         }}
       ]
     );
@@ -136,7 +147,7 @@ export function ClientDetails() {
         { text: "Sim, Resgatar", onPress: async () => {
             try {
                 // Chama a API para descontar os 10 selos
-                await clientService.redeemFidelity(client.id);
+                await api.put(`/clients/${clientId}`, { fidelityStamps: client.fidelityStamps - 10 });
                 Alert.alert("Sucesso!", "Prêmio resgatado! O cliente ganhou o corte grátis.");
                 
                 // Recarrega a tela para a animação das bolinhas atualizar
@@ -285,9 +296,16 @@ export function ClientDetails() {
                 <TouchableOpacity 
                   style={[styles.debtBtn, { backgroundColor: theme.success, borderColor: theme.success }]}
                   onPress={handleSettleDebt}
+                  disabled={isSettlingDebt}
                 >
-                   <Feather name="check" size={18} color="#FFF" />
-                   <Text style={[styles.debtBtnText, { color: "#FFF" }]}>Quitar Conta</Text>
+                   {isSettlingDebt ? (
+                       <ActivityIndicator size="small" color="#FFF" />
+                   ) : (
+                       <>
+                           <Feather name="check" size={18} color="#FFF" />
+                           <Text style={[styles.debtBtnText, { color: "#FFF" }]}>Quitar Conta</Text>
+                       </>
+                   )}
                 </TouchableOpacity>
              </View>
           </View>

@@ -39,6 +39,7 @@ const theme = {
   danger: "#EF4444",
   warning: "#F59E0B",
   info: "#38BDF8",
+  purple: "#A855F7", // 👈 Adicionada cor para o Pacote
   border: "rgba(255, 255, 255, 0.05)",
 };
 
@@ -158,9 +159,15 @@ export function AppointmentDetails() {
           setShowPaymentModal(false);
           setPaymentStep('OPTIONS');
           
-          Alert.alert("Sucesso", isPaid ? "Atendimento finalizado com sucesso!" : "Atendimento pendurado na conta do cliente!");
-      } catch (error) {
-          Alert.alert("Erro", "Não foi possível finalizar o atendimento.");
+          let successMessage = "Atendimento finalizado com sucesso!";
+          if (!isPaid) successMessage = "Atendimento pendurado na conta do cliente!";
+          if (method === 'PACOTE') successMessage = "Atendimento concluído! 1 Crédito descontado do pacote do cliente.";
+
+          Alert.alert("Sucesso", successMessage);
+      } catch (error: any) {
+          // Trata o erro caso o cliente não tenha mais créditos no pacote
+          const errorMsg = error.response?.data?.message || "Não foi possível finalizar o atendimento.";
+          Alert.alert("Erro", errorMsg);
       } finally {
           setIsCompleting(false);
       }
@@ -272,7 +279,7 @@ export function AppointmentDetails() {
     let borderColor = 'rgba(16, 185, 129, 0.3)';
 
     if (method === 'PIX') {
-       iconName = "smartphone"; // Usando Feather para o PIX
+       iconName = "smartphone"; 
        iconColor = theme.info;
        text = "PIX";
        bgColor = 'rgba(56, 189, 248, 0.15)';
@@ -283,6 +290,12 @@ export function AppointmentDetails() {
        text = method === 'CREDITO' ? 'Cartão de Crédito' : 'Cartão de Débito';
        bgColor = 'rgba(253, 230, 138, 0.15)';
        borderColor = 'rgba(253, 230, 138, 0.3)';
+    } else if (method === 'PACOTE' || method === 'COMBO') {
+       iconName = "package";
+       iconColor = theme.purple;
+       text = "Pacote de Cortes";
+       bgColor = 'rgba(168, 85, 247, 0.15)';
+       borderColor = 'rgba(168, 85, 247, 0.3)';
     }
 
     return (
@@ -463,7 +476,7 @@ export function AppointmentDetails() {
             </View>
 
             {paymentStep === 'OPTIONS' ? (
-                <View>
+                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: '85%' }}>
                     <Text style={styles.modalSubtitle}>Como o cliente {getClientName()} pagou {formatCurrency(appointment.totalPrice)}?</Text>
 
                     <TouchableOpacity style={[styles.paymentOptionBtn, { borderColor: theme.success }]} onPress={() => handleConfirmPayment(true, 'DINHEIRO')} disabled={isCompleting}>
@@ -496,6 +509,17 @@ export function AppointmentDetails() {
                         <Feather name="chevron-right" size={20} color={theme.goldLight} />
                     </TouchableOpacity>
 
+                    {/* 👇 NOVO BOTÃO DE PACOTE / COMBO 👇 */}
+                    <TouchableOpacity style={[styles.paymentOptionBtn, { borderColor: theme.purple }]} onPress={() => handleConfirmPayment(true, 'PACOTE')} disabled={isCompleting}>
+                        <View style={[styles.paymentIconBg, { backgroundColor: 'rgba(168, 85, 247, 0.15)' }]}>
+                            <Feather name="package" size={24} color={theme.purple} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={[styles.paymentOptionTitle, { color: theme.purple }]}>Usar Crédito de Pacote</Text>
+                        </View>
+                        <Feather name="chevron-right" size={20} color={theme.purple} />
+                    </TouchableOpacity>
+
                     <View style={styles.modalDivider} />
 
                     <TouchableOpacity style={[styles.paymentOptionBtn, { borderColor: theme.danger, backgroundColor: 'rgba(239, 68, 68, 0.05)' }]} onPress={() => handleConfirmPayment(false, 'FIADO')} disabled={isCompleting}>
@@ -507,7 +531,7 @@ export function AppointmentDetails() {
                         </View>
                         <Feather name="chevron-right" size={20} color={theme.danger} />
                     </TouchableOpacity>
-                </View>
+                </ScrollView>
             ) : (
                 <View>
                     <Text style={styles.modalSubtitle}>A maquininha cobra taxa? O Kairon desconta ela antes de dividir a comissão.</Text>

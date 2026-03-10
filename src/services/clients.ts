@@ -53,13 +53,19 @@ export const clientService = {
     }
     return response.data;
   },
-  // Adicione junto com os outros métodos de clientService
-  // 👇 BUSCA A LISTA DE CLIENTES SUMIDOS (MOTOR DE RETENÇÃO)
+
+  // 👇 BUSCA A LISTA DE CLIENTES SUMIDOS (MOTOR DE RETENÇÃO) CORRIGIDA
   getMissingClients: async (days: number = 30) => {
-    // Estamos chamando a rota do RetentionController que criamos no Spring Boot
-    const response = await api.get('/retention/recover');
+    // Apontando para a rota correta que está no ClientController.java
+    const response = await api.get('/clients/missing', { 
+        params: { daysAway: days } 
+    });
     
-    // O backend já vai devolver a lista formatada com quem não vem há mais de 25/30 dias
+    // Tratamento de paginação do Spring Boot (o Java devolve um Page<MissingClientResponse>)
+    if (response.data && Array.isArray(response.data.content)) {
+        return response.data.content;
+    }
+    
     return response.data;
   },
 

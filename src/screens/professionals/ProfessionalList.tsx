@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,7 @@ import {
   SafeAreaView,
   Platform
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Feather, MaterialIcons } from '@expo/vector-icons';
 
@@ -78,9 +78,12 @@ export function ProfessionalList() {
   const [showOnlyActive, setShowOnlyActive] = useState(false); 
   const [search, setSearch] = useState(''); // 👇 ESTADO DA BUSCA
 
-  useEffect(() => {
-    loadProfessionals();
-  }, []);
+  // 👇 USO DO FOCUS EFFECT PARA ATUALIZAR AO ABRIR A TELA 👇
+  useFocusEffect(
+    useCallback(() => {
+      loadProfessionals();
+    }, [])
+  );
 
   // --- HELPER PARA CORRIGIR URL DA FOTO ---
   const getAvatarUrl = (path: string | undefined) => {
@@ -94,7 +97,7 @@ export function ProfessionalList() {
 
   const loadProfessionals = async () => {
     try {
-      if (!refreshing) setLoading(true);
+      if (!refreshing && professionals.length === 0) setLoading(true);
       const response = await professionalService.list() as any; 
       const data = Array.isArray(response) ? response : (response.content || []);
       setProfessionals(data);

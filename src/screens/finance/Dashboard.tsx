@@ -133,18 +133,18 @@ export function FinanceDashboard() {
 
   // 👇 ESTADOS DO MODAL DE NOVO LANÇAMENTO 👇
   const [addModalVisible, setAddModalVisible] = useState(false);
-  const [newRecordType, setNewRecordType] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
+  const [newRecordType, setNewRecordType] = useState<'REVENUE' | 'EXPENSE'>('EXPENSE');
   const [newRecordTitle, setNewRecordTitle] = useState('');
   const [newRecordAmount, setNewRecordAmount] = useState('');
-  const [newRecordCategory, setNewRecordCategory] = useState('CUSTO_FIXO');
+  const [newRecordCategory, setNewRecordCategory] = useState('FIXED_COST');
   const [newRecordStatus, setNewRecordStatus] = useState<'PAID' | 'PENDING'>('PAID');
   const [isSubmittingRecord, setIsSubmittingRecord] = useState(false);
 
   const CATEGORIES = [
-    { label: 'Custo Fixo (Água, Luz...)', value: 'CUSTO_FIXO' },
-    { label: 'Estoque / Produtos', value: 'ESTOQUE' },
+    { label: 'Custo Fixo (Água, Luz...)', value: 'FIXED_COST' },
+    { label: 'Estoque / Produtos', value: 'INVENTORY' },
     { label: 'Marketing', value: 'MARKETING' },
-    { label: 'Outros', value: 'OUTROS' }
+    { label: 'Outros', value: 'OTHER' }
   ];
 
   const isCurrentPeriodLocked = user?.plan !== 'PLUS' && period !== 'day';
@@ -267,7 +267,8 @@ export function FinanceDashboard() {
           text: "Sim, Pagar", 
           onPress: async () => {
             try {
-              await api.patch(`/financial/records/${expenseId}/pay`);
+              // 👇 MUDAMOS DE PATCH PARA POST AQUI! 🚀
+              await api.post(`/financial/records/${expenseId}/pay`);
               Alert.alert("Sucesso", "Conta quitada!");
               loadData();
             } catch (error) {
@@ -279,7 +280,7 @@ export function FinanceDashboard() {
     );
   };
 
-  // 👇 SALVAR NOVO LANÇAMENTO MANUAL 👇
+  // 👇 SALVAR NOVO LANÇAMENTO (CORREÇÃO DE DATA E HORA) 👇
   const handleSaveRecord = async () => {
     if (!newRecordTitle.trim() || !newRecordAmount.trim()) {
       Alert.alert('Atenção', 'Preencha o título e o valor.');
@@ -294,27 +295,45 @@ export function FinanceDashboard() {
 
     try {
       setIsSubmittingRecord(true);
+
+      const today = new Date();
+      const dueDate = new Date();
+      dueDate.setDate(today.getDate() + 7);
+
+      // Adicionamos 'T00:00:00' para o Java aceitar como LocalDateTime sem reclamar!
+      const formattedDate = today.toISOString().split('T')[0] + 'T00:00:00';
+      const formattedDueDate = newRecordStatus === 'PENDING' 
+          ? dueDate.toISOString().split('T')[0] + 'T00:00:00' 
+          : null;
+
       await api.post('/financial/records', {
         type: newRecordType,
         amount: amountNumber,
         description: newRecordTitle,
         category: newRecordCategory,
         status: newRecordStatus,
-        paymentMethod: 'OUTROS'
+        paymentMethod: 'OTHER', 
+        referenceDate: formattedDate,
+        dueDate: formattedDueDate
       });
 
       Alert.alert('Sucesso', 'Lançamento registrado com sucesso!');
       setAddModalVisible(false);
       
-      // Limpa os campos para o próximo uso
       setNewRecordTitle('');
       setNewRecordAmount('');
       setNewRecordType('EXPENSE');
       setNewRecordStatus('PAID');
       
-      loadData(); // Atualiza o Dashboard na hora
-    } catch (error) {
-      Alert.alert('Erro', 'Não foi possível salvar o lançamento.');
+      loadData(); 
+    } catch (error: any) {
+      console.error(error.response?.data || error);
+      
+      const errorMsg = error.response?.data?.message || JSON.stringify(error.response?.data) || error.message;
+      Alert.alert(
+        'Erro do Servidor', 
+        `Status: ${error.response?.status}\nDetalhe: ${errorMsg}`
+      );
     } finally {
       setIsSubmittingRecord(false);
     }
@@ -871,10 +890,10 @@ export function FinanceDashboard() {
                               <Text style={[styles.toggleText, newRecordType === 'EXPENSE' && styles.toggleTextActive]}>Despesa</Text>
                           </TouchableOpacity>
                           <TouchableOpacity 
-                              style={[styles.toggleBtn, newRecordType === 'INCOME' && { backgroundColor: theme.success }]}
-                              onPress={() => setNewRecordType('INCOME')}
+                              style={[styles.toggleBtn, newRecordType === 'REVENUE' && { backgroundColor: theme.success }]}
+                              onPress={() => setNewRecordType('REVENUE')}
                           >
-                              <Text style={[styles.toggleText, newRecordType === 'INCOME' && styles.toggleTextActive]}>Receita</Text>
+                              <Text style={[styles.toggleText, newRecordType === 'REVENUE' && styles.toggleTextActive]}>Receita</Text>
                           </TouchableOpacity>
                       </View>
 
